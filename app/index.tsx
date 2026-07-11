@@ -1,39 +1,45 @@
-import { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Animated, Easing, Dimensions } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Dimensions, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 export default function SplashScreen() {
   const router = useRouter();
   const [phase, setPhase] = useState(0);
+  const [ready, setReady] = useState(false); // becomes true once welcome content has settled in
 
-  const logoScale = useRef(new Animated.Value(0.3)).current;
-  const logoOpacity = useRef(new Animated.Value(0)).current;
-  const logoRotate = useRef(new Animated.Value(-0.35)).current; // -20deg in radians ~ -0.35
-
+  // Title entrance
   const textOpacity = useRef(new Animated.Value(0)).current;
   const textTranslateY = useRef(new Animated.Value(20)).current;
 
+  // Tagline — fades in and STAYS visible (no fade-out)
   const taglineOpacity = useRef(new Animated.Value(0)).current;
   const taglineTranslateY = useRef(new Animated.Value(12)).current;
 
-  const bgInterpolate = useRef(new Animated.Value(0)).current;
+  // Welcome subtitle, appears below the tagline
+  const subtitleOpacity = useRef(new Animated.Value(0)).current;
+  const subtitleTranslateY = useRef(new Animated.Value(12)).current;
+
+  // Title/tagline block repositioning for the welcome layout
+  const headerTranslateY = useRef(new Animated.Value(0)).current;
+
+  // Mascot entrance
+  const mascotOpacity = useRef(new Animated.Value(0)).current;
+  const mascotTranslateY = useRef(new Animated.Value(60)).current;
 
   useEffect(() => {
-    let t1 = setTimeout(() => {
+    const t1 = setTimeout(() => {
       setPhase(1);
       Animated.parallel([
-        Animated.timing(logoOpacity, { toValue: 1, duration: 700, useNativeDriver: true }),
-        Animated.spring(logoScale, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }),
-        Animated.timing(logoRotate, { toValue: 0, duration: 700, easing: Easing.out(Easing.back(1.5)), useNativeDriver: true }),
-        Animated.timing(textOpacity, { toValue: 1, duration: 600, delay: 100, useNativeDriver: true }),
-        Animated.timing(textTranslateY, { toValue: 0, duration: 600, delay: 100, useNativeDriver: true }),
+        Animated.timing(textOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(textTranslateY, { toValue: 0, duration: 600, useNativeDriver: true }),
       ]).start();
     }, 700);
 
-    let t2 = setTimeout(() => {
+    const t2 = setTimeout(() => {
       setPhase(2);
       Animated.parallel([
         Animated.timing(taglineOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
@@ -41,76 +47,96 @@ export default function SplashScreen() {
       ]).start();
     }, 1500);
 
-    let t3 = setTimeout(() => {
+    // Transition into the welcome layout: header lifts up, subtitle and
+    // mascot fade/slide in below the tagline (which stays put — no fade-out).
+    // Then just wait for a tap.
+    const t3 = setTimeout(() => {
       setPhase(3);
       Animated.parallel([
-        Animated.timing(bgInterpolate, { toValue: 1, duration: 500, useNativeDriver: false }), // bg color cannot use native driver
-        Animated.timing(logoScale, { toValue: 0.7, duration: 500, useNativeDriver: true }),
-      ]).start();
+        Animated.timing(headerTranslateY, { toValue: -height * 0.14, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(subtitleOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.timing(subtitleTranslateY, { toValue: 0, duration: 500, useNativeDriver: true }),
+        Animated.timing(mascotOpacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(mascotTranslateY, { toValue: 0, duration: 600, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      ]).start(() => {
+        setReady(true); // now waiting on the user to tap
+      });
     }, 2800);
-
-    let t4 = setTimeout(() => {
-      router.replace('/onboarding');
-    }, 3400);
 
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
-      clearTimeout(t4);
     };
   }, []);
 
-  const bgColor = bgInterpolate.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['#1035a0', '#ffffff']
-  });
+  const goToOnboarding = () => {
+    if (!ready) return; // ignore taps until the intro has settled
+    router.replace('/onboarding');
+  };
 
   return (
-    <Animated.View style={[styles.container, { backgroundColor: bgColor }]}>
-      {/* Background Blobs (Static approximations for native) */}
-      <View style={styles.blob1} />
-      <View style={styles.blob2} />
+    <Pressable style={{ flex: 1 }} onPress={goToOnboarding}>
+      <LinearGradient
+        colors={['#0d326b', '#1e4b8f', '#1a6fd4']}
+        locations={[0, 0.5, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.container}
+      >
+        {/* Decorative circles */}
+        <View style={[styles.bgCircle, styles.bgCircleTopLeft]} />
+        <View style={[styles.bgCircle, styles.bgCircleTopRight]} />
+        <View style={[styles.bgCircle, styles.bgCircleMidLeft]} />
+        <View style={[styles.bgCircle, styles.bgCircleMidRight]} />
 
-      {/* Logo */}
-      <Animated.View style={{
-        transform: [
-          { scale: logoScale },
-          { rotate: logoRotate.interpolate({ inputRange: [-0.35, 0], outputRange: ['-20deg', '0deg'] }) }
-        ],
-        opacity: logoOpacity,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-        <Image
-          source={require('../assets/images/img/senyas_logo.png')}
-          style={styles.logo}
-          contentFit="contain"
-        />
-      </Animated.View>
+        {/* Title + Tagline + Subtitle — lifts upward once welcome phase kicks in */}
+        <Animated.View style={{ transform: [{ translateY: headerTranslateY }], alignItems: 'center' }}>
+          <Animated.View style={{
+            opacity: textOpacity,
+            transform: [{ translateY: textTranslateY }],
+            alignItems: 'center',
+          }}>
+            <Text style={styles.title}>SEÑAS</Text>
+          </Animated.View>
 
-      {/* App Name */}
-      <Animated.View style={{
-        opacity: textOpacity,
-        transform: [{ translateY: textTranslateY }],
-        alignItems: 'center',
-        marginTop: 24,
-      }}>
-        <Text style={styles.title}>SEÑAS</Text>
-        <Text style={styles.subtitle}>Filipino Sign Language</Text>
-      </Animated.View>
+          {/* Tagline — fades in and stays visible */}
+          <Animated.View style={{
+            opacity: taglineOpacity,
+            transform: [{ translateY: taglineTranslateY }],
+            alignItems: 'center',
+            marginTop: 16,
+          }}>
+            <Text style={styles.tagline}>Learn · Practice · Connect</Text>
+          </Animated.View>
 
-      {/* Tagline */}
-      <Animated.View style={{
-        opacity: taglineOpacity,
-        transform: [{ translateY: taglineTranslateY }],
-        alignItems: 'center',
-        marginTop: 16,
-      }}>
-        <Text style={styles.tagline}>Learn · Practice · Connect</Text>
-      </Animated.View>
+          {/* Welcome subtitle, appears below the tagline */}
+          <Animated.View style={{
+            opacity: subtitleOpacity,
+            transform: [{ translateY: subtitleTranslateY }],
+            alignItems: 'center',
+            marginTop: 12,
+          }}>
+            <Text style={styles.subtitle}>Your guide onto learning Filipino Sign Language</Text>
+          </Animated.View>
+        </Animated.View>
 
-    </Animated.View>
+        {/* Big mascot anchored at the bottom */}
+        <Animated.View
+          style={[
+            styles.mascotContainer,
+            { opacity: mascotOpacity, transform: [{ translateY: mascotTranslateY }] },
+          ]}
+        >
+          <Image
+            source={require('../assets/images/senya/intro_senya.png')}
+            style={styles.firstSlideMascot}
+            contentFit="contain"
+          />
+        </Animated.View>
+
+      </LinearGradient>
+    </Pressable>
   );
 }
 
@@ -121,28 +147,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  blob1: {
+  bgCircle: {
     position: 'absolute',
-    top: '-15%',
-    left: '-10%',
-    width: width * 0.55,
-    aspectRatio: 1,
     borderRadius: 999,
-    backgroundColor: 'rgba(96,165,250,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  blob2: {
-    position: 'absolute',
-    bottom: '-10%',
-    right: '-10%',
-    width: width * 0.5,
-    aspectRatio: 1,
-    borderRadius: 999,
-    backgroundColor: 'rgba(251,191,36,0.08)',
-  },
-  logo: {
-    width: 130,
-    height: 130,
-  },
+  bgCircleTopLeft: { width: 90, height: 90, top: 60, left: -20 },
+  bgCircleTopRight: { width: 60, height: 60, top: 110, right: 20 },
+  bgCircleMidLeft: { width: 40, height: 40, top: height * 0.38, left: 24 },
+  bgCircleMidRight: { width: 70, height: 70, top: height * 0.42, right: -10 },
   title: {
     fontSize: 42,
     fontWeight: '900',
@@ -153,18 +166,29 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 4 },
     textShadowRadius: 24,
   },
-  subtitle: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 13,
-    fontWeight: '500',
-    letterSpacing: 2,
-    marginTop: 4,
-    textTransform: 'uppercase',
-  },
   tagline: {
     color: 'rgba(255,255,255,0.65)',
     fontSize: 14,
     fontWeight: '500',
     lineHeight: 22,
-  }
+  },
+  subtitle: {
+    color: '#cfe0ff',
+    fontSize: 15,
+    fontWeight: '500',
+    textAlign: 'center',
+    paddingHorizontal: 40,
+  },
+  mascotContainer: {
+    position: 'absolute',
+    bottom: -height * 0.12,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  firstSlideMascot: {
+    width: width * 1.18,
+    height: width * 1.20,
+  },
 });

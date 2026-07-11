@@ -1,16 +1,15 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Dimensions, SafeAreaView, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
-import { Colors } from '../constants/Colors';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { Dimensions, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { GlassCard } from '../components/ui/GlassCard';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const SLIDES = [
   {
     id: 0,
-    senya: require('../assets/images/img/senya_blue.png'),
+    senya: require('../assets/images/img/senyas_logo.png'),
     accent: '#2563EB',
     accentLight: 'rgba(37,99,235,0.10)',
     tag: 'Welcome',
@@ -107,7 +106,7 @@ export default function Onboarding() {
       <View style={styles.mainContent}>
         <GlassCard style={styles.card}>
           <View style={[styles.cardTopStrip, { backgroundColor: slide.accent }]} />
-          
+
           <View style={[styles.tagContainer, { backgroundColor: slide.accentLight }]}>
             <View style={[styles.tagDot, { backgroundColor: slide.accent }]} />
             <Text style={[styles.tagText, { color: slide.accent }]}>{slide.tag.toUpperCase()}</Text>
