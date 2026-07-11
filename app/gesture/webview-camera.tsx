@@ -1,30 +1,29 @@
 // app/gesture/webview-camera.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
+import { useCameraPermissions } from 'expo-camera';
+import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import { useEffect, useRef, useState } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    SafeAreaView,
-    Pressable,
     ActivityIndicator,
-    Platform,
-    TouchableOpacity,
-    Linking,
-    ScrollView,
+    Animated,
     Dimensions,
     Image,
+    Linking,
     Modal,
-    Animated,
-    LayoutAnimation,
+    Platform,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
     UIManager,
+    View
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import WebView from 'react-native-webview';
-import { Ionicons } from '@expo/vector-icons';
-import { useCameraPermissions } from 'expo-camera';
-import * as WebBrowser from 'expo-web-browser';
-import { Audio } from 'expo-av';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 
 
@@ -666,7 +665,7 @@ export default function WebViewCameraScreen() {
 
 
 
-    const GESTURE_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture.html';
+    const GESTURE_URL = 'https://prude-overpay-grievance.ngrok-free.dev/gesture.html';
 
     // Inject CSS to hide detection box and other UI elements from the HTML
     const injectedJavaScript = `

@@ -6,6 +6,13 @@ const API_URL = Constants.expoConfig?.extra?.apiUrl || 'http://localhost:8000/ap
 
 console.log('🌐 API URL:', API_URL);
 
+// Shared base headers — includes ngrok bypass so the warning page is skipped
+const baseHeaders = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
+};
+
 export const api = {
     login: async (lrn, pin) => {
         try {
@@ -15,8 +22,7 @@ export const api = {
             const response = await fetch(`${API_URL}/student/login`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
                 body: JSON.stringify({ lrn, pin }),
             });
@@ -48,7 +54,7 @@ export const api = {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
+                    ...baseHeaders,
                 },
             });
 
@@ -74,7 +80,7 @@ export const api = {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
+                        ...baseHeaders,
                     },
                 });
             }
@@ -95,7 +101,7 @@ export const api = {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
+                    ...baseHeaders,
                 },
                 body: JSON.stringify({ fsl_mastery_level: level }),
             });
@@ -121,7 +127,7 @@ export const api = {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
+                    ...baseHeaders,
                 },
                 body: JSON.stringify(data),
             });
@@ -147,7 +153,7 @@ export const api = {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
+                    ...baseHeaders,
                 },
             });
 
@@ -179,8 +185,7 @@ export const api = {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
             });
 
@@ -213,8 +218,7 @@ export const api = {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
             });
 
@@ -246,8 +250,7 @@ export const api = {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
             });
 
@@ -278,8 +281,7 @@ export const api = {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
                 body: JSON.stringify(progressData),
             });
@@ -311,8 +313,7 @@ export const api = {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
                 body: JSON.stringify(quizData),
             });
@@ -344,8 +345,7 @@ export const api = {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
                 body: JSON.stringify({ slide_index: slideIndex }),
             });
@@ -375,8 +375,7 @@ export const api = {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
             });
 
@@ -399,8 +398,7 @@ export const api = {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
             });
 
@@ -441,8 +439,7 @@ export const api = {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
                 body: JSON.stringify(payload),
             });
@@ -478,8 +475,7 @@ export const api = {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
             });
 
@@ -517,8 +513,7 @@ export const api = {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
             });
 
@@ -551,8 +546,7 @@ export const api = {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
             });
 
@@ -585,8 +579,7 @@ export const api = {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
+                    ...baseHeaders,
                 },
                 body: JSON.stringify({
                     module_name: moduleName,
