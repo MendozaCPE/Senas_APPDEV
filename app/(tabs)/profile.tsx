@@ -370,7 +370,11 @@ export default function Profile() {
       <SignOutModal
         visible={showSignOutModal}
         onClose={() => setShowSignOutModal(false)}
-        onConfirm={() => { setShowSignOutModal(false); router.replace('/onboarding'); }}
+        onConfirm={async () => {
+          setShowSignOutModal(false);
+          await AsyncStorage.removeItem('userData');
+          router.replace('/');
+        }}
       />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>

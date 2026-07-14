@@ -1,9 +1,124 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView, Modal, Linking } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Dimensions, Easing, Linking, Modal, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { Colors } from '../constants/Colors';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import Svg, { Path } from 'react-native-svg';
 import { GhostButton } from '../components/ui/Buttons';
+
+const { width, height } = Dimensions.get('window');
+const ACCENT = '#2563EB';
+
+function ArrowRight({ size = 24, color = '#fff' }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M5 12h14" />
+      <Path d="M13 5l7 7-7 7" />
+    </Svg>
+  );
+}
+
+// ── Cloud shape variants ───────────────────────────────────────────────
+function CloudPuffs({ cw, ch, variant }: { cw: number; ch: number; variant: number }) {
+  const w = '#ffffff';
+  switch (variant % 6) {
+    case 0:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.08, width: cw * 0.50, height: ch * 0.72, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.35, width: cw * 0.60, height: ch * 0.88, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw,         height: ch * 0.52, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+    case 1:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.20, width: cw * 0.60, height: ch * 1.00, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw * 0.50, height: ch * 0.60, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.52, width: cw * 0.48, height: ch * 0.55, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw,         height: ch * 0.40, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+    case 2:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.04, width: cw * 0.40, height: ch * 0.95, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.48, width: cw * 0.46, height: ch * 0.80, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw,         height: ch * 0.45, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+    case 3:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.00, width: cw * 0.38, height: ch * 0.65, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.25, width: cw * 0.42, height: ch * 0.90, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.55, width: cw * 0.38, height: ch * 0.70, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw,         height: ch * 0.42, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+    case 4:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.10, width: cw * 0.35, height: ch * 0.80, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.38, width: cw * 0.55, height: ch * 0.65, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw * 1.10, height: ch * 0.38, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+    case 5:
+    default:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: ch * 0.45, left: cw * 0.30, width: cw * 0.40, height: ch * 0.55, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: ch * 0.20, left: cw * 0.12, width: cw * 0.65, height: ch * 0.55, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0,         left: 0,         width: cw,         height: ch * 0.45, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+  }
+}
+
+// ── Drifting Cloud ─────────────────────────────────────────────────────
+function DriftingCloud({ top, size = 1, duration = 22000, startX = 0, opacity = 0.5, variant = 0 }: {
+  top: number; size?: number; duration?: number; startX?: number; opacity?: number; variant?: number;
+}) {
+  const totalTravel = width + width * 0.5;
+  const initialX = -width * 0.5 + (startX % totalTravel);
+  const translateX = useRef(new Animated.Value(initialX)).current;
+
+  useEffect(() => {
+    const remaining = totalTravel - (initialX + width * 0.5);
+    const firstDuration = Math.max((remaining / totalTravel) * duration, 100);
+
+    Animated.timing(translateX, {
+      toValue: width + width * 0.5,
+      duration: firstDuration,
+      easing: Easing.linear,
+      useNativeDriver: true,
+    }).start(() => {
+      translateX.setValue(-width * 0.5);
+      Animated.loop(
+        Animated.timing(translateX, {
+          toValue: width + width * 0.5,
+          duration,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      ).start();
+    });
+
+    return () => translateX.stopAnimation();
+  }, []);
+
+  const cw = 90 * size;
+  const ch = 34 * size;
+
+  return (
+    <Animated.View pointerEvents="none" style={{ position: 'absolute', top, left: 0, opacity, transform: [{ translateX }] }}>
+      <View style={{ width: cw, height: ch * 1.1 }}>
+        <CloudPuffs cw={cw} ch={ch} variant={variant} />
+      </View>
+    </Animated.View>
+  );
+}
 
 export default function RoleSelect() {
   const router = useRouter();
@@ -12,101 +127,89 @@ export default function RoleSelect() {
 
   const pickRole = (role: string) => {
     setSelected(role);
-    if (role === 'teacher') {
+  };
+
+  const confirmRole = () => {
+    if (!selected) return;
+    if (selected === 'teacher') {
       setShowPopup(true);
+      return;
     }
-    if (role === 'student') {
-      // In the original, it goes to studentSplash then original Onboarding then Login
-      // For simplicity, we just route them to login
-      setTimeout(() => router.replace('/login'), 350);
-    }
+    router.replace('/login');
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        
-        {/* Top Bar */}
-        <View style={styles.topBar}>
-          <Text style={styles.logoText}>SEÑAS</Text>
-        </View>
+    <LinearGradient
+      colors={['#0d326b', '#1e4b8f', '#1a6fd4']}
+      locations={[0, 0.5, 1]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.container}
+    >
+      {/* Drifting clouds — same motif as splash/login/onboarding */}
+      <DriftingCloud top={height * 0.04} size={2.4} duration={28000} startX={0}            opacity={0.30} variant={0} />
+      <DriftingCloud top={height * 0.10} size={2.0} duration={22000} startX={width * 0.50} opacity={0.25} variant={1} />
+      <DriftingCloud top={height * 0.17} size={1.6} duration={19000} startX={width * 0.20} opacity={0.22} variant={2} />
+      <DriftingCloud top={height * 0.24} size={2.2} duration={25000} startX={width * 0.70} opacity={0.20} variant={3} />
 
-        {/* Hero */}
-        <View style={styles.hero}>
-          <View style={styles.heroImageContainer}>
-            <Image source={require('../assets/images/img/senya_blue.png')} style={styles.heroImage} contentFit="contain" />
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.content}>
+          {/* Header */}
+          <View style={styles.topBar}>
+            <Text style={styles.title}>Select your role.?</Text>
           </View>
-          
-          <View style={styles.badgeContainer}>
-            <View style={styles.badgeDot} />
-            <Text style={styles.badgeText}>CHOOSE YOUR ROLE</Text>
-          </View>
+          <Text style={styles.subtitle}>We'll tailor your experience based on your role.</Text>
 
-          <Text style={styles.title}>Who are you learning for?</Text>
-          <Text style={styles.subtitle}>Your experience will be tailored to your role.</Text>
-        </View>
-
-        {/* Cards */}
-        <View style={styles.cardsContainer}>
-          {/* STUDENT CARD */}
-          <Pressable
-            style={[
-              styles.roleCard,
-              selected === 'student' && styles.roleCardSelectedStudent,
-              (selected && selected !== 'student') && styles.roleCardFaded
-            ]}
-            onPress={() => pickRole('student')}
-          >
-            <View style={[styles.cardTopStrip, { backgroundColor: '#2563EB' }]} />
-            <View style={styles.cardContent}>
-              <View style={[styles.cardIconBox, { backgroundColor: 'rgba(37,99,235,0.08)' }]}>
-                <Image source={require('../assets/images/img/student.png')} style={styles.cardIcon} contentFit="contain" />
-              </View>
+          {/* Cards */}
+          <View style={styles.cardsContainer}>
+            {/* STUDENT CARD */}
+            <Pressable
+              style={[styles.roleCard, selected === 'student' && styles.roleCardSelected]}
+              onPress={() => pickRole('student')}
+            >
               <View style={styles.cardTextContent}>
-                <View style={[styles.cardLabel, { backgroundColor: 'rgba(37,99,235,0.08)' }]}>
-                  <Text style={[styles.cardLabelText, { color: '#2563EB' }]}>STUDENT</Text>
-                </View>
+                <Text style={styles.cardLabel}>STUDENT</Text>
                 <Text style={styles.cardTitle}>I'm here to learn</Text>
-                <Text style={styles.cardDesc}>Access lessons, quizzes, gesture recognition, and earn badges.</Text>
               </View>
-            </View>
-          </Pressable>
+              <View style={styles.avatarBox}>
+                <Image source={require('../assets/images/senya/senya_student.png')} style={styles.avatarImage} contentFit="contain" />
+              </View>
+            </Pressable>
 
-          {/* TEACHER CARD */}
-          <Pressable
-            style={[
-              styles.roleCard,
-              selected === 'teacher' && styles.roleCardSelectedTeacher,
-              (selected && selected !== 'teacher') && styles.roleCardFaded
-            ]}
-            onPress={() => pickRole('teacher')}
-          >
-            <View style={[styles.cardTopStrip, { backgroundColor: '#059669' }]} />
-            <View style={styles.cardContent}>
-              <View style={[styles.cardIconBox, { backgroundColor: 'rgba(5,150,105,0.08)' }]}>
-                <Image source={require('../assets/images/img/teacher.png')} style={styles.cardIcon} contentFit="contain" />
-              </View>
+            {/* TEACHER CARD */}
+            <Pressable
+              style={[styles.roleCard, selected === 'teacher' && styles.roleCardSelected]}
+              onPress={() => pickRole('teacher')}
+            >
               <View style={styles.cardTextContent}>
-                <View style={[styles.cardLabel, { backgroundColor: 'rgba(5,150,105,0.08)' }]}>
-                  <Text style={[styles.cardLabelText, { color: '#059669' }]}>TEACHER</Text>
-                </View>
+                <Text style={styles.cardLabel}>TEACHER</Text>
                 <Text style={styles.cardTitle}>I'm here to teach</Text>
-                <Text style={styles.cardDesc}>Manage classes, monitor student progress, from a web dashboard.</Text>
               </View>
-            </View>
-          </Pressable>
+              <View style={styles.avatarBox}>
+                <Image source={require('../assets/images/img/teacher.png')} style={styles.avatarImage} contentFit="contain" />
+              </View>
+            </Pressable>
+          </View>
+
+          {/* Continue button */}
+          <View style={styles.navContainer}>
+            <Pressable
+              style={[styles.nextBtn, !selected && styles.nextBtnDisabled]}
+              onPress={confirmRole}
+              disabled={!selected}
+            >
+              <ArrowRight size={24} color="#fff" />
+            </Pressable>
+          </View>
         </View>
-
-        <Text style={styles.footerNote}>You can always change your role in Settings later.</Text>
-
-      </ScrollView>
+      </SafeAreaView>
 
       {/* Teacher Popup Modal */}
       <Modal visible={showPopup} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHandle} />
-            <Image source={require('../assets/images/img/senyas_logo.png')} style={styles.modalLogo} contentFit="contain" />
+            <Image source={require('../assets/images/senya/senya_teacher.png')} style={styles.modalLogo} contentFit="contain" />
             <Text style={styles.modalTitle}>You're heading to the teacher portal!</Text>
             <Text style={styles.modalDesc}>
               The SEÑAS teacher dashboard is a web-based platform. You'll be redirected to log in and manage your classes.
@@ -123,56 +226,66 @@ export default function RoleSelect() {
           </View>
         </View>
       </Modal>
-
-    </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#eaf5fd' },
-  scrollContent: { padding: 20, paddingBottom: 40 },
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
-  logoText: { color: '#0f3172', fontSize: 22, fontWeight: '800', letterSpacing: 2 },
-  hero: { alignItems: 'center', marginBottom: 24 },
-  heroImageContainer: { marginBottom: 14 },
-  heroImage: { width: 100, height: 100 },
-  badgeContainer: {
+  container: { flex: 1, overflow: 'hidden' },
+  safe: { flex: 1 },
+  content: { flex: 1, padding: 24, justifyContent: 'center' },
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(15,49,114,0.08)',
-    borderRadius: 99,
-    paddingVertical: 4,
-    paddingHorizontal: 14,
-    marginBottom: 10,
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  badgeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#1848c8' },
-  badgeText: { fontSize: 11, fontWeight: '800', color: '#1848c8', letterSpacing: 0.8 },
-  title: { fontSize: 24, fontWeight: '800', color: '#0f3172', marginBottom: 8, textAlign: 'center' },
-  subtitle: { fontSize: 14, color: '#4b7bbb', fontWeight: '500', textAlign: 'center' },
-  cardsContainer: { gap: 14 },
+  title: { flex: 1, fontSize: 22, fontWeight: '800', color: '#fff', lineHeight: 28 },
+  step: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.55)' },
+  subtitle: { fontSize: 13.5, color: '#cfe0ff', fontWeight: '500', lineHeight: 20, marginBottom: 28 },
+
+  cardsContainer: { gap: 16 },
   roleCard: {
-    backgroundColor: 'rgba(255,255,255,0.66)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.92)',
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.85)',
+    borderColor: 'rgba(255,255,255,0.6)',
     borderRadius: 20,
-    padding: 20,
-    overflow: 'hidden',
+    paddingVertical: 18,
+    paddingHorizontal: 20,
   },
-  roleCardSelectedStudent: { borderColor: '#93C5FD' },
-  roleCardSelectedTeacher: { borderColor: '#6EE7B7' },
-  roleCardFaded: { opacity: 0.5 },
-  cardTopStrip: { position: 'absolute', top: 0, left: 0, right: 0, height: 3 },
-  cardContent: { flexDirection: 'row', gap: 14 },
-  cardIconBox: { width: 76, height: 76, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  cardIcon: { width: 72, height: 72 },
-  cardTextContent: { flex: 1 },
-  cardLabel: { alignSelf: 'flex-start', borderRadius: 6, paddingVertical: 2, paddingHorizontal: 10, marginBottom: 6 },
-  cardLabelText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
-  cardTitle: { fontSize: 16, fontWeight: '800', color: '#0f3172', marginBottom: 4 },
-  cardDesc: { fontSize: 12.5, color: '#475569', lineHeight: 20 },
-  footerNote: { textAlign: 'center', fontSize: 11, color: '#9CA3AF', fontWeight: '500', marginTop: 20 },
-  
+  roleCardSelected: {
+    borderColor: ACCENT,
+    backgroundColor: '#ffffff',
+  },
+  cardTextContent: { flex: 1, paddingRight: 12 },
+  cardLabel: { fontSize: 11, fontWeight: '800', color: '#9AABB8', letterSpacing: 0.8, marginBottom: 6 },
+  cardTitle: { fontSize: 17, fontWeight: '800', color: '#0f3172' },
+  avatarBox: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 15
+  },
+  avatarImage: { width: 95, height: 95 },
+
+  navContainer: { alignItems: 'center', marginTop: 36 },
+  nextBtn: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nextBtnDisabled: { opacity: 0.35 },
+
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15,30,80,0.45)', justifyContent: 'flex-end' },
   modalContent: {
     backgroundColor: 'rgba(255,255,255,0.96)',
