@@ -156,7 +156,7 @@ export default function RoleSelect() {
         <View style={styles.content}>
           {/* Header */}
           <View style={styles.topBar}>
-            <Text style={styles.title}>Select your role.?</Text>
+            <Text style={styles.title}>Select your role.</Text>
           </View>
           <Text style={styles.subtitle}>We'll tailor your experience based on your role.</Text>
 
@@ -186,7 +186,7 @@ export default function RoleSelect() {
                 <Text style={styles.cardTitle}>I'm here to teach</Text>
               </View>
               <View style={styles.avatarBox}>
-                <Image source={require('../assets/images/img/teacher.png')} style={styles.avatarImage} contentFit="contain" />
+                <Image source={require('../assets/images/senya/senya_teacher.png')} style={styles.avatarImage} contentFit="contain" />
               </View>
             </Pressable>
           </View>
