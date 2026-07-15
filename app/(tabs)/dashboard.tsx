@@ -10,17 +10,18 @@ import {
   ActivityIndicator,
   FlatList,
   Dimensions,
-  Animated
+  Animated,
+  Easing,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Circle, Line, Polyline, Rect } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 
 const { width: screenWidth } = Dimensions.get('window');
 
-// Types
 // Types
 interface Lesson {
   lesson_id: number;
@@ -32,8 +33,8 @@ interface Lesson {
   assigned_at: string;
   has_quiz: boolean;
   total_steps: number;
-  is_locked?: boolean; // 🔥 Add this optional property
-  score?: number | null; // 🔥 Add this too for score tracking
+  is_locked?: boolean;
+  score?: number | null;
   progress: {
     current_step: number;
     lesson_completed: boolean;
@@ -42,11 +43,16 @@ interface Lesson {
   } | null;
 }
 
+// ── Quick navigation grid — 8 shortcuts, inspired by the reference layout ──
 const quickActions = [
   { label: "Multiple Choice", icon: require('../../assets/images/img/multiple_choice.png'), color: "#2563EB", screen: "/quiz/mc" },
-  { label: "Drag & Drop", icon: require('../../assets/images/img/dragNdrop.png'), color: "#1D4ED8", screen: "/quiz/dnd" },
+  { label: "Drag & Drop", icon: require('../../assets/images/img/dragNdrop.png'), color: "#059669", screen: "/quiz/dnd" },
   { label: "Gesture Cam", icon: require('../../assets/images/img/camera.png'), color: "#0f3172", screen: "/(tabs)/gesture" },
-  { label: "My Badges", icon: require('../../assets/images/img/badges.png'), color: "#fbbf24", screen: "/(tabs)/achievements" },
+  { label: "My Badges", icon: require('../../assets/images/img/badges.png'), color: "#F59E0B", screen: "/(tabs)/achievements" },
+  { label: "Alphabet", icon: require('../../assets/images/img/alphabet.png'), color: "#8B5CF6", screen: "/lessons" },
+  { label: "Numbers", icon: require('../../assets/images/img/numbers.png'), color: "#DB2777", screen: "/lessons" },
+  { label: "Greetings", icon: require('../../assets/images/img/greetings.png'), color: "#0EA5E9", screen: "/lessons" },
+  { label: "All Lessons", icon: require('../../assets/images/img/lesson.png'), color: "#DC2626", screen: "/lessons" },
 ];
 
 function getGreeting(): string {
@@ -78,6 +84,90 @@ const getStatusTag = (status: string, progress: any): string => {
   if (status === 'in_progress' || (progress && progress.current_step > 0)) return 'In Progress';
   return 'Pending';
 };
+
+// ── Cloud shape variants — same motif used across splash/login/onboarding/role ──
+function CloudPuffs({ cw, ch, variant }: { cw: number; ch: number; variant: number }) {
+  const w = '#ffffff';
+  switch (variant % 6) {
+    case 0:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.08, width: cw * 0.50, height: ch * 0.72, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.35, width: cw * 0.60, height: ch * 0.88, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw,         height: ch * 0.52, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+    case 1:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.20, width: cw * 0.60, height: ch * 1.00, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw * 0.50, height: ch * 0.60, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.52, width: cw * 0.48, height: ch * 0.55, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw,         height: ch * 0.40, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+    case 2:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.04, width: cw * 0.40, height: ch * 0.95, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.48, width: cw * 0.46, height: ch * 0.80, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw,         height: ch * 0.45, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+    default:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.00, width: cw * 0.38, height: ch * 0.65, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.25, width: cw * 0.42, height: ch * 0.90, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.55, width: cw * 0.38, height: ch * 0.70, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw,         height: ch * 0.42, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+  }
+}
+
+function DriftingCloud({ top, size = 1, duration = 22000, startX = 0, opacity = 0.5, variant = 0, trackWidth }: {
+  top: number; size?: number; duration?: number; startX?: number; opacity?: number; variant?: number; trackWidth: number;
+}) {
+  const totalTravel = trackWidth + trackWidth * 0.5;
+  const initialX = -trackWidth * 0.5 + (startX % totalTravel);
+  const translateX = useRef(new Animated.Value(initialX)).current;
+
+  useEffect(() => {
+    const remaining = totalTravel - (initialX + trackWidth * 0.5);
+    const firstDuration = Math.max((remaining / totalTravel) * duration, 100);
+
+    Animated.timing(translateX, {
+      toValue: trackWidth + trackWidth * 0.5,
+      duration: firstDuration,
+      easing: Easing.linear,
+      useNativeDriver: true,
+    }).start(() => {
+      translateX.setValue(-trackWidth * 0.5);
+      Animated.loop(
+        Animated.timing(translateX, {
+          toValue: trackWidth + trackWidth * 0.5,
+          duration,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      ).start();
+    });
+
+    return () => translateX.stopAnimation();
+  }, []);
+
+  const cw = 70 * size;
+  const ch = 26 * size;
+
+  return (
+    <Animated.View pointerEvents="none" style={{ position: 'absolute', top, left: 0, opacity, transform: [{ translateX }] }}>
+      <View style={{ width: cw, height: ch * 1.1 }}>
+        <CloudPuffs cw={cw} ch={ch} variant={variant} />
+      </View>
+    </Animated.View>
+  );
+}
 
 export default function Dashboard() {
   const router = useRouter();
@@ -118,7 +208,6 @@ export default function Dashboard() {
         if (student?.level !== undefined && student?.level !== null) {
           setLevel(student.level);
         }
-        // ✅ ADD THIS - Get level name from stored data if available
         if (student?.level_name) {
           setLevelName(student.level_name);
         }
@@ -145,8 +234,6 @@ export default function Dashboard() {
       setLoadingLessons(true);
       const response = await api.getAllLessons();
 
-      console.log('📚 Dashboard - All lessons response:', JSON.stringify(response, null, 2));
-
       if (response.success) {
         const allLessons = response.lessons || [];
         setTeacherLessons(allLessons);
@@ -161,7 +248,6 @@ export default function Dashboard() {
           if (response.student.level !== undefined && response.student.level !== null) {
             setLevel(response.student.level);
           }
-          // ✅ ADD THIS - Get the level name from the API
           if (response.student.level_name) {
             setLevelName(response.student.level_name);
           }
@@ -193,14 +279,6 @@ export default function Dashboard() {
       case 'completed': return '#4CAF50';
       case 'in_progress': return '#f59e0b';
       default: return '#2563EB';
-    }
-  };
-
-  const getLessonStatusText = (status: string): string => {
-    switch (status) {
-      case 'completed': return '✅ Completed';
-      case 'in_progress': return '⏳ In Progress';
-      default: return '📖 Pending';
     }
   };
 
@@ -312,19 +390,6 @@ export default function Dashboard() {
     );
   }
 
-  // const getLevelDisplay = (levelNum: number): string => {
-  //   const levelNames: Record<number, string> = {
-  //     1: 'Novice Signer',
-  //     2: 'Beginner Signer',
-  //     3: 'Intermediate Signer',
-  //     4: 'Advanced Signer',
-  //     5: 'Expert Signer',
-  //   };
-  //   return levelNames[levelNum] || 'Novice Signer';
-  // };
-
-
-  // Get the next recommended lesson (first unlocked, not-completed lesson)
   const nextRecommendedLesson = teacherLessons
     .filter(lesson => {
       const isLocked = lesson.is_locked === true || lesson.status === 'locked';
@@ -332,59 +397,31 @@ export default function Dashboard() {
       return !isLocked && !isCompleted;
     })
 
-
   const carouselLessons = teacherLessons
     .filter(lesson => {
       const isLocked = lesson.is_locked === true || lesson.status === 'locked';
       if (isLocked) return false;
-
-      // Show if not completed
       const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
       if (!isCompleted) return true;
-
-      // Show if completed but not perfect (score < 100)
       const score = lesson.score ?? lesson.progress?.quiz_score ?? 0;
       return score < 100;
     })
     .sort((a, b) => {
-      // Sort: Not completed first, then completed but not perfect
       const aCompleted = a.status === 'completed' || a.progress?.lesson_completed;
       const bCompleted = b.status === 'completed' || b.progress?.lesson_completed;
-
       if (!aCompleted && bCompleted) return -1;
       if (aCompleted && !bCompleted) return 1;
       return 0;
     });
-  // Get completed lessons for "Continue Learning"
+
   const completedLessons = teacherLessons
     .filter(lesson => lesson.status === 'completed' || lesson.progress?.lesson_completed)
     .slice(0, 3);
 
-  // Use completed lessons for Continue Learning
   const continueLearningLessons = completedLessons;
   const sectionTitle = continueLearningLessons.length > 0 ? 'Continue Learning' : 'Completed Lessons';
 
-  // Debug logging
-  console.log('📚 Teacher Lessons total:', teacherLessons.length);
-  console.log('📚 Next Recommended Lesson:', nextRecommendedLesson.length);
-  console.log('📚 Continue Learning (completed):', continueLearningLessons.length);
-  console.log('📚 Carousel Lessons:', carouselLessons.length);
-
-  // Get unlocked lessons (not completed, not locked)
-  const unlockedLessons = teacherLessons.filter(lesson => {
-    const isLocked = lesson.is_locked === true || lesson.status === 'locked';
-    const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
-    return !isLocked && !isCompleted;
-  });
-
-  // Show continue learning if available, otherwise show completed
   const displayLessons = continueLearningLessons.length > 0 ? continueLearningLessons : completedLessons;
-
-  // Debug logging
-  console.log('📚 Teacher Lessons total:', teacherLessons.length);
-  console.log('📚 Continue Learning:', continueLearningLessons.length);
-  console.log('📚 Completed Lessons:', completedLessons.length);
-  console.log('📚 Display Lessons:', displayLessons.length);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -402,52 +439,86 @@ export default function Dashboard() {
           </View>
         </View>
 
-        {/* Hero Card */}
+        {/* Hero + Level Card — same blue gradient & drifting clouds as splash/login/onboarding */}
         <View style={styles.section}>
-          <View style={styles.heroCard}>
-            <View style={styles.heroContent}>
-              <View style={styles.heroTextContent}>
-                <Text style={styles.greetingText}>{getGreeting()}</Text>
-                <Text style={styles.nameText}>Hello, {studentName}!</Text>
-                <View style={styles.badgeRow}>
-                  <View style={styles.smallBadgeBlue}>
-                    <Svg width="12" height="12" viewBox="0 0 24 24" fill="#fbbf24">
-                      <Path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                    </Svg>
-                    <Text style={styles.smallBadgeTextBlue}>{studentLevel}</Text>
-                  </View>
-                  <View style={styles.smallBadgeOrange}>
-                    <Svg width="11" height="11" viewBox="0 0 24 24" fill="#fb923c">
-                      <Path d="M12 2c0 6-8 8-8 14a8 8 0 0016 0C20 10 12 8 12 2z" />
-                    </Svg>
-                    <Text style={styles.smallBadgeTextOrange}>{streak} day streak</Text>
-                  </View>
-                </View>
-              </View>
-              <Image source={require('../../assets/images/img/senya_blue.png')} style={styles.senyaHero} contentFit="contain" />
-            </View>
+          <View style={styles.heroCardWrapper}>
+            <LinearGradient
+              colors={['#0d326b', '#1e4b8f', '#1a6fd4']}
+              locations={[0, 0.5, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.heroCard}
+            >
+              {/* Drifting clouds, clipped to the card */}
+              <DriftingCloud top={10} size={1.4} duration={20000} startX={0} opacity={0.20} variant={0} trackWidth={screenWidth - 32} />
+              <DriftingCloud top={46} size={1.0} duration={16000} startX={screenWidth * 0.4} opacity={0.16} variant={2} trackWidth={screenWidth - 32} />
 
-            <View style={styles.divider} />
-            <View style={styles.levelSection}>
-              <View style={styles.levelIconBox}>
-                <Image source={require('../../assets/images/img/level_1.png')} style={styles.levelIcon} contentFit="contain" />
-              </View>
-              <View style={styles.levelInfo}>
-                <View style={styles.levelHeader}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={styles.levelTag}>
-                      <Text style={styles.levelTagText}>LEVEL {level}</Text>
+              <View style={styles.heroContent}>
+                <View style={styles.heroTextContent}>
+                  <Text style={styles.greetingText}>{getGreeting()}</Text>
+                  <Text style={styles.nameText}>Hello, {studentName}!</Text>
+                  <View style={styles.badgeRow}>
+                    <View style={styles.smallBadgeBlue}>
+                      <Svg width="12" height="12" viewBox="0 0 24 24" fill="#fbbf24">
+                        <Path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                      </Svg>
+                      <Text style={styles.smallBadgeTextBlue}>{studentLevel}</Text>
                     </View>
-                    <Text style={styles.levelTitle}>{levelName}</Text>
+                    <View style={styles.smallBadgeOrange}>
+                      <Svg width="11" height="11" viewBox="0 0 24 24" fill="#fb923c">
+                        <Path d="M12 2c0 6-8 8-8 14a8 8 0 0016 0C20 10 12 8 12 2z" />
+                      </Svg>
+                      <Text style={styles.smallBadgeTextOrange}>{streak} day streak</Text>
+                    </View>
                   </View>
-                  <Text style={styles.xpPctText}>{Math.round(xpPct)}%</Text>
                 </View>
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: `${xpPct}%` }]} />
-                </View>
-                <Text style={styles.xpStatusText}>{xp} / {xpMax} XP · {Math.max(0, xpMax - xp)} XP to next level</Text>
+                <Image source={require('../../assets/images/img/senya_blue.png')} style={styles.senyaHero} contentFit="contain" />
               </View>
+
+              <View style={styles.divider} />
+              <View style={styles.levelSection}>
+                <View style={styles.levelIconBox}>
+                  <Image source={require('../../assets/images/img/level_1.png')} style={styles.levelIcon} contentFit="contain" />
+                </View>
+                <View style={styles.levelInfo}>
+                  <View style={styles.levelHeader}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={styles.levelTag}>
+                        <Text style={styles.levelTagText}>LEVEL {level}</Text>
+                      </View>
+                      <Text style={styles.levelTitle}>{levelName}</Text>
+                    </View>
+                    <Text style={styles.xpPctText}>{Math.round(xpPct)}%</Text>
+                  </View>
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${xpPct}%` }]} />
+                  </View>
+                  <Text style={styles.xpStatusText}>{xp} / {xpMax} XP · {Math.max(0, xpMax - xp)} XP to next level</Text>
+                </View>
+              </View>
+            </LinearGradient>
+          </View>
+        </View>
+
+        {/* Quick Actions — easy navigation grid, inspired by the reference layout */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderLeft}>
+              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f3172" strokeWidth="2">
+                <Path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
+              </Svg>
+              <Text style={styles.sectionTitle}> Quick Actions</Text>
             </View>
+          </View>
+          <View style={styles.quickGrid}>
+            {quickActions.map((q, i) => (
+              <Pressable key={i} style={styles.quickItem} onPress={() => router.push(q.screen as any)}>
+                <View style={[styles.quickIconBox, { backgroundColor: `${q.color}18` }]}>
+                  <Image source={q.icon} style={styles.quickIcon} contentFit="contain" />
+                </View>
+                <Text style={styles.quickText} numberOfLines={1}>{q.label}</Text>
+              </Pressable>
+            ))}
           </View>
         </View>
 
@@ -526,7 +597,7 @@ export default function Dashboard() {
           </Pressable>
         </View>
 
-        {/* Continue Learning Section - RESTORED with dynamic data */}
+        {/* Continue Learning Section */}
         {displayLessons.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -604,31 +675,13 @@ export default function Dashboard() {
             </View>
           </View>
         )}
-
-
-
-        {/* Quick Practice */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Practice</Text>
-          <View style={styles.quickGrid}>
-            {quickActions.map((q, i) => (
-              <Pressable key={i} style={styles.quickCard} onPress={() => router.push(q.screen as any)}>
-                <View style={styles.quickIconBox}>
-                  <Image source={q.icon} style={styles.quickIcon} contentFit="contain" />
-                </View>
-                <Text style={styles.quickText}>{q.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#eaf5fd' },
+  container: { flex: 1, backgroundColor: '#ffffffff' },
   scrollContent: { paddingBottom: 100 },
   loadingContainer: { alignItems: 'center', justifyContent: 'center' },
   loadingText: { marginTop: 16, fontSize: 14, color: '#666' },
@@ -639,30 +692,41 @@ const styles = StyleSheet.create({
   streakBadge: { backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 20, paddingVertical: 5, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
   streakText: { color: '#0f3172', fontSize: 13, fontWeight: '700' },
   section: { paddingHorizontal: 16, marginBottom: 14 },
-  heroCard: { backgroundColor: 'white', borderRadius: 24, padding: 18, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 20, elevation: 2, borderWidth: 1, borderColor: '#EAECF0' },
+
+  // Hero + Level — gradient card
+  heroCardWrapper: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#0d326b',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 6,
+  },
+  heroCard: { padding: 18, overflow: 'hidden' },
   heroContent: { flexDirection: 'row', justifyContent: 'space-between' },
   heroTextContent: { flex: 1, paddingRight: 8 },
-  greetingText: { color: '#4b7bbb', fontSize: 13, fontWeight: '600' },
-  nameText: { color: '#0f3172', fontSize: 26, fontWeight: '800', marginTop: 2, marginBottom: 8 },
+  greetingText: { color: 'rgba(255,255,255,0.65)', fontSize: 13, fontWeight: '600' },
+  nameText: { color: '#fff', fontSize: 26, fontWeight: '800', marginTop: 2, marginBottom: 8 },
   badgeRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  smallBadgeBlue: { backgroundColor: 'rgba(15,49,114,0.10)', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  smallBadgeTextBlue: { fontSize: 11, fontWeight: '700', color: '#0f3172' },
-  smallBadgeOrange: { backgroundColor: 'rgba(251,191,36,0.15)', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  smallBadgeTextOrange: { fontSize: 11, fontWeight: '700', color: '#92400E' },
+  smallBadgeBlue: { backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  smallBadgeTextBlue: { fontSize: 11, fontWeight: '700', color: '#fff' },
+  smallBadgeOrange: { backgroundColor: 'rgba(251,191,36,0.20)', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  smallBadgeTextOrange: { fontSize: 11, fontWeight: '700', color: '#fde68a' },
   senyaHero: { width: 100, height: 100, marginTop: -6 },
-  divider: { height: 1, backgroundColor: 'rgba(15,49,114,0.08)', marginVertical: 14 },
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.16)', marginVertical: 14 },
   levelSection: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  levelIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(251,191,36,0.15)', alignItems: 'center', justifyContent: 'center' },
+  levelIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
   levelIcon: { width: 36, height: 36 },
   levelInfo: { flex: 1 },
   levelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
-  levelTag: { backgroundColor: '#1848c8', borderRadius: 6, paddingVertical: 2, paddingHorizontal: 8, marginRight: 6 },
+  levelTag: { backgroundColor: 'rgba(255,255,255,0.20)', borderRadius: 6, paddingVertical: 2, paddingHorizontal: 8, marginRight: 6 },
   levelTagText: { fontSize: 9, fontWeight: '800', color: '#fff', letterSpacing: 1 },
-  levelTitle: { fontSize: 14, fontWeight: '800', color: '#0f3172' },
-  xpPctText: { fontSize: 11, fontWeight: '700', color: '#4b7bbb' },
-  progressTrack: { backgroundColor: 'rgba(15,49,114,0.12)', borderRadius: 99, height: 8, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: '#f59e0b', borderRadius: 99 },
-  xpStatusText: { fontSize: 10, color: '#4b7bbb', fontWeight: '600', marginTop: 4 },
+  levelTitle: { fontSize: 14, fontWeight: '800', color: '#fff' },
+  xpPctText: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)' },
+  progressTrack: { backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 99, height: 8, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: '#fbbf24', borderRadius: 99 },
+  xpStatusText: { fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: '600', marginTop: 4 },
 
   dailyCard: { backgroundColor: '#2563EB', borderRadius: 20, padding: 20, shadowColor: '#0f3172', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.32, shadowRadius: 24, elevation: 8 },
   dailyHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
@@ -700,11 +764,12 @@ const styles = StyleSheet.create({
   lessonProgressFill: { height: '100%', borderRadius: 99 },
   lessonProgressText: { fontSize: 10, color: '#4b7bbb', marginTop: 3, fontWeight: '600' },
 
-  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  quickCard: { width: '48%', backgroundColor: 'rgba(255,255,255,0.62)', borderColor: 'rgba(255,255,255,0.85)', borderWidth: 1, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 10, alignItems: 'center', gap: 7 },
-  quickIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(37,99,235,0.10)', alignItems: 'center', justifyContent: 'center' },
-  quickIcon: { width: 40, height: 40 },
-  quickText: { fontSize: 12, fontWeight: '700', color: '#0f3172' },
+  // Quick Actions grid — flat colorful circle + label, no card, inspired by the reference
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 16 },
+  quickItem: { width: '25%', alignItems: 'center', gap: 6 },
+  quickIconBox: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  quickIcon: { width: 32, height: 32 },
+  quickText: { fontSize: 10.5, fontWeight: '700', color: '#0f3172', textAlign: 'center' },
 
   // Teacher Lesson Cards
   teacherLessonsCarousel: {
