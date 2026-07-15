@@ -1,23 +1,23 @@
 // app/(tabs)/dashboard.tsx
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  Pressable,
-  ActivityIndicator,
-  FlatList,
-  Dimensions,
-  Animated,
-  Easing,
-} from 'react-native';
-import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path, Circle, Line, Polyline, Rect } from 'react-native-svg';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Easing,
+  FlatList,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
 import { api } from '../../services/api';
 
 // Module-level flag — survives tab switches, resets only on app restart
@@ -60,9 +60,9 @@ const quickActions = [
 
 function getGreeting(): string {
   const h = new Date().getHours();
-  if (h < 12) return "Good morning!";
-  if (h < 17) return "Good afternoon!";
-  return "Good evening!";
+  if (h < 12) return "Good morning,";
+  if (h < 17) return "Good afternoon,";
+  return "Good evening,";
 }
 
 // Map lesson type to icon - using only existing assets
@@ -97,16 +97,16 @@ function CloudPuffs({ cw, ch, variant }: { cw: number; ch: number; variant: numb
         <>
           <View style={{ position: 'absolute', bottom: 0, left: cw * 0.08, width: cw * 0.50, height: ch * 0.72, borderRadius: 999, backgroundColor: w }} />
           <View style={{ position: 'absolute', bottom: 0, left: cw * 0.35, width: cw * 0.60, height: ch * 0.88, borderRadius: 999, backgroundColor: w }} />
-          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw,         height: ch * 0.52, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0, width: cw, height: ch * 0.52, borderRadius: 999, backgroundColor: w }} />
         </>
       );
     case 1:
       return (
         <>
           <View style={{ position: 'absolute', bottom: 0, left: cw * 0.20, width: cw * 0.60, height: ch * 1.00, borderRadius: 999, backgroundColor: w }} />
-          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw * 0.50, height: ch * 0.60, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0, width: cw * 0.50, height: ch * 0.60, borderRadius: 999, backgroundColor: w }} />
           <View style={{ position: 'absolute', bottom: 0, left: cw * 0.52, width: cw * 0.48, height: ch * 0.55, borderRadius: 999, backgroundColor: w }} />
-          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw,         height: ch * 0.40, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0, width: cw, height: ch * 0.40, borderRadius: 999, backgroundColor: w }} />
         </>
       );
     case 2:
@@ -114,7 +114,7 @@ function CloudPuffs({ cw, ch, variant }: { cw: number; ch: number; variant: numb
         <>
           <View style={{ position: 'absolute', bottom: 0, left: cw * 0.04, width: cw * 0.40, height: ch * 0.95, borderRadius: 999, backgroundColor: w }} />
           <View style={{ position: 'absolute', bottom: 0, left: cw * 0.48, width: cw * 0.46, height: ch * 0.80, borderRadius: 999, backgroundColor: w }} />
-          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw,         height: ch * 0.45, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0, width: cw, height: ch * 0.45, borderRadius: 999, backgroundColor: w }} />
         </>
       );
     default:
@@ -123,7 +123,7 @@ function CloudPuffs({ cw, ch, variant }: { cw: number; ch: number; variant: numb
           <View style={{ position: 'absolute', bottom: 0, left: cw * 0.00, width: cw * 0.38, height: ch * 0.65, borderRadius: 999, backgroundColor: w }} />
           <View style={{ position: 'absolute', bottom: 0, left: cw * 0.25, width: cw * 0.42, height: ch * 0.90, borderRadius: 999, backgroundColor: w }} />
           <View style={{ position: 'absolute', bottom: 0, left: cw * 0.55, width: cw * 0.38, height: ch * 0.70, borderRadius: 999, backgroundColor: w }} />
-          <View style={{ position: 'absolute', bottom: 0, left: 0,         width: cw,         height: ch * 0.42, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0, width: cw, height: ch * 0.42, borderRadius: 999, backgroundColor: w }} />
         </>
       );
   }
@@ -481,29 +481,33 @@ export default function Dashboard() {
               <DriftingCloud top={10} size={1.4} duration={20000} startX={0} opacity={0.20} variant={0} trackWidth={screenWidth - 32} />
               <DriftingCloud top={46} size={1.0} duration={16000} startX={screenWidth * 0.4} opacity={0.16} variant={2} trackWidth={screenWidth - 32} />
 
+              {/* senya_clouds — background decoration pinned to bottom */}
+              <Image
+                source={require('../../assets/images/senya/senya_clouds.png')}
+                style={styles.senyaCloudsBackground}
+                contentFit="cover"
+                contentPosition="bottom right"
+                pointerEvents="none"
+              />
+
               <View style={styles.heroContent}>
                 <View style={styles.heroTextContent}>
                   <Text style={styles.greetingText}>{getGreeting()}</Text>
-                  <Text style={styles.nameText}>Hello, {studentName}!</Text>
-                  <View style={styles.badgeRow}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 1, marginBottom: 4 }}>
+                    <Text style={styles.nameText}>{studentName}!</Text>
                     <View style={styles.smallBadgeBlue}>
                       <Svg width="12" height="12" viewBox="0 0 24 24" fill="#fbbf24">
                         <Path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                       </Svg>
                       <Text style={styles.smallBadgeTextBlue}>{studentLevel}</Text>
                     </View>
-                    <View style={styles.smallBadgeOrange}>
-                      <Svg width="11" height="11" viewBox="0 0 24 24" fill="#fb923c">
-                        <Path d="M12 2c0 6-8 8-8 14a8 8 0 0016 0C20 10 12 8 12 2z" />
-                      </Svg>
-                      <Text style={styles.smallBadgeTextOrange}>{streak} day streak</Text>
-                    </View>
                   </View>
+                  <Text style={styles.subtitleText}>Keep practicing and </Text>
+                  <Text style={styles.subtitleText}>make progress every day!</Text>
                 </View>
-                <Image source={require('../../assets/images/img/senya_blue.png')} style={styles.senyaHero} contentFit="contain" />
               </View>
 
-              <View style={styles.divider} />
+
               <View style={styles.levelSection}>
                 <View style={styles.levelIconBox}>
                   <Image source={require('../../assets/images/img/level_1.png')} style={styles.levelIcon} contentFit="contain" />
@@ -531,12 +535,6 @@ export default function Dashboard() {
         {/* Quick Actions — easy navigation grid, inspired by the reference layout */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <View style={styles.sectionHeaderLeft}>
-              <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f3172" strokeWidth="2">
-                <Path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
-              </Svg>
-              <Text style={styles.sectionTitle}> Quick Actions</Text>
-            </View>
           </View>
           <View style={styles.quickGrid}>
             {quickActions.map((q, i) => (
@@ -828,27 +826,61 @@ const styles = StyleSheet.create({
   heroCard: { padding: 18, overflow: 'hidden' },
   heroContent: { flexDirection: 'row', justifyContent: 'space-between' },
   heroTextContent: { flex: 1, paddingRight: 8 },
-  greetingText: { color: 'rgba(255,255,255,0.65)', fontSize: 13, fontWeight: '600' },
-  nameText: { color: '#fff', fontSize: 26, fontWeight: '800', marginTop: 2, marginBottom: 8 },
+  greetingText: { color: 'rgba(255,255,255,0.75)', fontSize: 14, fontWeight: '600' },
+  nameText: { color: '#fff', fontSize: 32, fontWeight: '800', marginTop: 1, marginBottom: 4 },
+  subtitleText: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: '500', marginBottom: 0 },
   badgeRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   smallBadgeBlue: { backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
   smallBadgeTextBlue: { fontSize: 11, fontWeight: '700', color: '#fff' },
   smallBadgeOrange: { backgroundColor: 'rgba(251,191,36,0.20)', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 4 },
   smallBadgeTextOrange: { fontSize: 11, fontWeight: '700', color: '#fde68a' },
   senyaHero: { width: 100, height: 100, marginTop: -6 },
+  senyaCloudsBackground: {
+    position: 'absolute',
+    bottom: -18,
+    left: -18,
+    right: -18,
+    height: 240,
+  },
   divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.16)', marginVertical: 14 },
-  levelSection: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  levelIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
-  levelIcon: { width: 36, height: 36 },
+  levelSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 16,
+    marginTop: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  levelIconBox: {
+    width: 50,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  levelIcon: { width: 38, height: 38 },
   levelInfo: { flex: 1 },
   levelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
-  levelTag: { backgroundColor: 'rgba(255,255,255,0.20)', borderRadius: 6, paddingVertical: 2, paddingHorizontal: 8, marginRight: 6 },
-  levelTagText: { fontSize: 9, fontWeight: '800', color: '#fff', letterSpacing: 1 },
-  levelTitle: { fontSize: 14, fontWeight: '800', color: '#fff' },
-  xpPctText: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)' },
-  progressTrack: { backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 99, height: 8, overflow: 'hidden' },
+  levelTag: {
+    backgroundColor: '#2563EB',
+    borderRadius: 99,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    marginRight: 6,
+  },
+  levelTagText: { fontSize: 9.5, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+  levelTitle: { fontSize: 14, fontWeight: '800', color: '#0f3172' },
+  xpPctText: { fontSize: 12, fontWeight: '800', color: '#2563EB' },
+  progressTrack: { backgroundColor: '#eff6ff', borderRadius: 99, height: 8, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#fbbf24', borderRadius: 99 },
-  xpStatusText: { fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: '600', marginTop: 4 },
+  xpStatusText: { fontSize: 10, color: '#64748B', fontWeight: '600', marginTop: 4 },
 
   dailyCard: { backgroundColor: '#2563EB', borderRadius: 20, padding: 20, shadowColor: '#0f3172', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.32, shadowRadius: 24, elevation: 8 },
   dailyHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
@@ -890,7 +922,7 @@ const styles = StyleSheet.create({
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 16 },
   quickItem: { width: '25%', alignItems: 'center', gap: 6 },
   quickIconBox: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  quickIcon: { width: 32, height: 32 },
+  quickIcon: { width: 45, height: 45 },
   quickText: { fontSize: 10.5, fontWeight: '700', color: '#0f3172', textAlign: 'center' },
 
   // Teacher Lesson Cards
