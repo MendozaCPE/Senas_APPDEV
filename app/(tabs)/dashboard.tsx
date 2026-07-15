@@ -20,6 +20,9 @@ import Svg, { Path, Circle, Line, Polyline, Rect } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 
+// Module-level flag — survives tab switches, resets only on app restart
+let practiceAdDismissed = false;
+
 const { width: screenWidth } = Dimensions.get('window');
 
 // Types
@@ -182,11 +185,36 @@ export default function Dashboard() {
   const [loadingLessons, setLoadingLessons] = useState<boolean>(true);
   const flatListRef = useRef<FlatList>(null);
   const [levelName, setLevelName] = useState<string>('Novice Signer');
+  const [showPracticeAd, setShowPracticeAd] = useState<boolean>(!practiceAdDismissed);
+  const adSlideAnim = useRef(new Animated.Value(120)).current;
 
   useEffect(() => {
     fetchStudentData();
     fetchTeacherLessons();
   }, []);
+
+  useEffect(() => {
+    if (showPracticeAd) {
+      Animated.spring(adSlideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 60,
+        friction: 10,
+      }).start();
+    }
+  }, [showPracticeAd]);
+
+  const dismissPracticeAd = () => {
+    Animated.timing(adSlideAnim, {
+      toValue: 160,
+      duration: 260,
+      easing: Easing.in(Easing.ease),
+      useNativeDriver: true,
+    }).start(() => {
+      practiceAdDismissed = true;
+      setShowPracticeAd(false);
+    });
+  };
 
   const fetchStudentData = async (): Promise<void> => {
     try {
@@ -195,8 +223,8 @@ export default function Dashboard() {
       if (userData) {
         const user = JSON.parse(userData);
         const student = user.student;
-        const fullName = `${student?.first_name || ''} ${student?.last_name || ''}`.trim();
-        setStudentName(fullName || 'Student');
+        const firstName = student?.first_name?.trim() || 'Student';
+        setStudentName(firstName);
         setStudentLevel(student?.fsl_mastery_level || 'Beginner');
 
         if (student?.total_xp !== undefined && student?.total_xp !== null) {
@@ -558,44 +586,7 @@ export default function Dashboard() {
           </View>
         )}
 
-        {/* Daily Challenge */}
-        <View style={styles.section}>
-          <Pressable style={styles.dailyCard} onPress={() => router.push('/assessment')}>
-            <View style={styles.dailyHeader}>
-              <View style={styles.dailyIconBox}>
-                <Svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <Circle cx="12" cy="12" r="10" stroke="#fff" strokeWidth="2" />
-                  <Circle cx="12" cy="12" r="6" stroke="rgba(255,255,255,0.6)" strokeWidth="2" />
-                  <Circle cx="12" cy="12" r="2" fill="#fff" />
-                </Svg>
-              </View>
-              <Text style={styles.dailyLabel}>DAILY CHALLENGE</Text>
-              <View style={styles.dailyXpBadge}>
-                <Text style={styles.dailyXpText}>+50 XP</Text>
-              </View>
-            </View>
-            <View style={styles.dailyContent}>
-              <View style={styles.dailyTextContent}>
-                <Text style={styles.dailyTitle}>Practice Your Signs</Text>
-                <Text style={styles.dailyDesc}>Complete a lesson today to earn your daily streak bonus.</Text>
-                <View style={styles.dailyDots}>
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <View key={n} style={[styles.dailyDot, { backgroundColor: n <= 2 ? '#fbbf24' : 'rgba(255,255,255,0.2)' }]} />
-                  ))}
-                </View>
-                <Text style={styles.dailyStatusText}>Practice daily to build your streak!</Text>
-              </View>
-              <View style={styles.dailyActionBox}>
-                <View style={styles.dailyStartBtn}>
-                  <Text style={styles.dailyStartText}>Start</Text>
-                  <Svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#78350f" strokeWidth="2.5">
-                    <Line x1="5" y1="12" x2="19" y2="12" /><Polyline points="12 5 19 12 12 19" />
-                  </Svg>
-                </View>
-              </View>
-            </View>
-          </Pressable>
-        </View>
+
 
         {/* Continue Learning Section */}
         {displayLessons.length > 0 && (
@@ -676,6 +667,51 @@ export default function Dashboard() {
           </View>
         )}
       </ScrollView>
+
+      {/* Practice Your Signs — floating ad banner above tab bar */}
+      {showPracticeAd && (
+        <Animated.View
+          style={[
+            styles.adBannerWrapper,
+            { transform: [{ translateY: adSlideAnim }] },
+          ]}
+          pointerEvents="box-none"
+        >
+          <Pressable style={styles.adBanner} onPress={() => router.push('/assessment')}>
+            {/* Close button */}
+            <Pressable style={styles.adCloseBtn} onPress={dismissPracticeAd} hitSlop={10}>
+              <Svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3">
+                <Line x1="18" y1="6" x2="6" y2="18" />
+                <Line x1="6" y1="6" x2="18" y2="18" />
+              </Svg>
+            </Pressable>
+
+            {/* Left: icon + label */}
+            <View style={styles.adIconBox}>
+              <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <Circle cx="12" cy="12" r="10" stroke="#fff" strokeWidth="2" />
+                <Circle cx="12" cy="12" r="6" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
+                <Circle cx="12" cy="12" r="2" fill="#fff" />
+              </Svg>
+            </View>
+
+            {/* Center: text */}
+            <View style={styles.adTextBox}>
+              <Text style={styles.adTopLabel}>DAILY CHALLENGE  ·  +50 XP</Text>
+              <Text style={styles.adTitle}>Practice Your Signs</Text>
+              <Text style={styles.adDesc}>Complete a lesson {'&'} earn your streak bonus!</Text>
+            </View>
+
+            {/* Right: CTA button */}
+            <Pressable style={styles.adCtaBtn} onPress={() => router.push('/assessment')}>
+              <Text style={styles.adCtaText}>Start</Text>
+              <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#78350f" strokeWidth="3">
+                <Line x1="5" y1="12" x2="19" y2="12" /><Polyline points="12 5 19 12 12 19" />
+              </Svg>
+            </Pressable>
+          </Pressable>
+        </Animated.View>
+      )}
     </SafeAreaView>
   );
 }
@@ -683,6 +719,92 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ffffffff' },
   scrollContent: { paddingBottom: 100 },
+
+  // ── Floating Practice Ad Banner ──
+  adBannerWrapper: {
+    position: 'absolute',
+    bottom: 10, // sits snugly just above the tab bar
+    left: 12,
+    right: 12,
+    zIndex: 999,
+    shadowColor: '#0d326b',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 14,
+  },
+  adBanner: {
+    backgroundColor: '#1e4b8f',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  adCloseBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 10,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  adIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  adTextBox: {
+    flex: 1,
+    paddingRight: 4,
+  },
+  adTopLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#fde68a',
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  adTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 2,
+  },
+  adDesc: {
+    fontSize: 10.5,
+    color: 'rgba(255,255,255,0.65)',
+    fontWeight: '500',
+  },
+  adCtaBtn: {
+    backgroundColor: '#fbbf24',
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+    marginTop: 18,
+    alignSelf: 'flex-end',
+  },
+  adCtaText: {
+    color: '#78350f',
+    fontWeight: '800',
+    fontSize: 13,
+  },
   loadingContainer: { alignItems: 'center', justifyContent: 'center' },
   loadingText: { marginTop: 16, fontSize: 14, color: '#666' },
 
