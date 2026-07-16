@@ -1,668 +1,757 @@
 // app/module-quiz/[id].tsx
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  ActivityIndicator,
-  Animated,
-  Dimensions,
-  Easing,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  View,
+  View, Text, StyleSheet, SafeAreaView, Pressable,
+  ScrollView, Modal, ActivityIndicator, Animated, Dimensions, StatusBar
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import Svg, {
-  Circle,
-  Defs,
-  LinearGradient as SvgGradient,
-  Path,
-  Stop,
-} from 'react-native-svg';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Image } from 'expo-image';
+import Svg, { Path, Circle, Polyline, Line } from 'react-native-svg';
+import ConfettiCannon from 'react-native-confetti-cannon';
+import { Audio } from 'expo-av';
 import { api } from '../../services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ── Types ────────────────────────────────────────────────────────────────────
-interface QuizOption {
+// ─── Sound Effects ──────────────────────────────────────────────────────────
+const CORRECT_SOUND = require('../../assets/music/correct.mp3');
+const WRONG_SOUND = require('../../assets/music/wrong.mp3');
+const QUIZ_RESULT_SOUND = require('../../assets/music/quiz-result.mp3');
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+interface Option {
   option_id: number;
   option_text: string;
   is_correct: boolean;
 }
-
-interface QuizQuestion {
+interface Question {
   question_id: number;
-  question_type: 'multiple_choice' | 'true_false';
+  question_type: string;
   question_text: string;
   points: number;
-  options: QuizOption[];
+  options: Option[];
+}
+interface QuizAttempt {
+  percentage: number;
+  passed: boolean;
+  created_at: string;
 }
 
-interface UserAnswer {
-  question_id: number;
-  selected_option_id: number | null;
+// ─── SVG Icons ──────────────────────────────────────────────────────────────
+function CheckCircleIcon({ color = '#10B981' }: { color?: string }) {
+  return <Svg width="18" height="18" viewBox="0 0 24 24" fill="none"><Circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" /><Polyline points="8 12 11 15 16 9" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></Svg>;
+}
+function XCircleIcon({ color = '#EF4444' }: { color?: string }) {
+  return <Svg width="18" height="18" viewBox="0 0 24 24" fill="none"><Circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" /><Line x1="15" y1="9" x2="9" y2="15" stroke={color} strokeWidth="2.5" strokeLinecap="round" /><Line x1="9" y1="9" x2="15" y2="15" stroke={color} strokeWidth="2.5" strokeLinecap="round" /></Svg>;
+}
+function BookIcon({ size = 16, color = '#1848c8' }: { size?: number; color?: string }) {
+  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><Path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z" /><Path d="M8 2v4" /><Path d="M16 2v4" /></Svg>;
 }
 
-// ── Palette ───────────────────────────────────────────────────────────────────
-const PURPLE = '#7C3AED';
-const PURPLE_LIGHT = '#A855F7';
-const GOLD = '#F59E0B';
-const GREEN = '#10B981';
-const RED = '#EF4444';
-const BG_FROM = '#1e0a3c';
-const BG_MID = '#3b0f6b';
-const BG_TO = '#5b21b6';
-
-// ── Small SVG icons ───────────────────────────────────────────────────────────
-function TrophyIcon({ size = 28, color = '#F59E0B' }: { size?: number; color?: string }) {
+// ─── Exit Modal ──────────────────────────────────────────────────────────────
+function ExitModal({ visible, onClose, onConfirm }: { visible: boolean; onClose: () => void; onConfirm: () => void }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M8 21h8" />
-      <Path d="M12 17v4" />
-      <Path d="M7 4h10v5a5 5 0 0 1-10 0V4z" fill={color} stroke={color} />
-      <Path d="M7 5H4a1 1 0 0 0-1 1v1a4 4 0 0 0 4 4" />
-      <Path d="M17 5h3a1 1 0 0 1 1 1v1a4 4 0 0 1-4 4" />
-    </Svg>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={s.overlay} onPress={onClose}>
+        <Pressable style={s.exitModal} onPress={e => e.stopPropagation()}>
+          <View style={s.exitIconBox}>
+            <Svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <Path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <Polyline points="16 17 21 12 16 7" />
+              <Line x1="21" y1="12" x2="9" y2="12" />
+            </Svg>
+          </View>
+          <Text style={s.exitTitle}>Exit Checkpoint?</Text>
+          <Text style={s.exitDesc}>You will lose your current quiz progress. Are you sure you want to exit?</Text>
+          <View style={s.exitBtns}>
+            <Pressable style={s.stayBtn} onPress={onClose}>
+              <Text style={s.stayText}>Stay</Text>
+            </Pressable>
+            <Pressable style={s.exitConfirmBtn} onPress={onConfirm}>
+              <Text style={s.exitConfirmText}>Exit</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
-function CheckIcon({ size = 18, color = '#fff' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M20 6L9 17l-5-5" />
-    </Svg>
-  );
-}
-
-function XIcon({ size = 18, color = '#fff' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M18 6L6 18M6 6l12 12" />
-    </Svg>
-  );
-}
-
-function BackIcon({ color = '#fff', size = 22 }: { color?: string; size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <Path d="M15 18l-6-6 6-6" />
-    </Svg>
-  );
-}
-
-// ── Animated progress ring ───────────────────────────────────────────────────
-function ProgressRing({ pct, size = 130 }: { pct: number; size?: number }) {
-  const r = (size - 14) / 2;
-  const cx = size / 2;
-  const cy = size / 2;
-  const circ = 2 * Math.PI * r;
-  const dash = (Math.max(0, Math.min(100, pct)) / 100) * circ;
-
-  return (
-    <Svg width={size} height={size}>
-      <Defs>
-        <SvgGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0%" stopColor="#F59E0B" />
-          <Stop offset="100%" stopColor="#FBBF24" />
-        </SvgGradient>
-      </Defs>
-      <Circle cx={cx} cy={cy} r={r} stroke="rgba(255,255,255,0.15)" strokeWidth={14} fill="none" />
-      <Circle
-        cx={cx} cy={cy} r={r}
-        stroke="url(#ringGrad)" strokeWidth={14} fill="none"
-        strokeDasharray={`${dash} ${circ}`}
-        strokeLinecap="round"
-        transform={`rotate(-90 ${cx} ${cy})`}
-      />
-    </Svg>
-  );
-}
-
-// ── Main Screen ───────────────────────────────────────────────────────────────
-export default function ModuleQuizScreen() {
+// ─── Main Component ──────────────────────────────────────────────────────────
+export default function ModuleQuizViewer() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const moduleId = parseInt(id || '0', 10);
 
-  // ── state ─────────────────────────────────────────────────────────────────
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [moduleTitle, setModuleTitle] = useState('');
-  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<UserAnswer[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [moduleTitle, setModuleTitle] = useState<string>('');
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
+  
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [answered, setAnswered] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [questionRevealed, setQuestionRevealed] = useState<boolean>(false);
+  const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({});
+  const [currentScore, setCurrentScore] = useState<number>(0);
 
-  // ── results state ────────────────────────────────────────────────────────
-  const [showResults, setShowResults] = useState(false);
-  const [resultData, setResultData] = useState<{
-    score: number; total: number; percentage: number; passed: boolean; xpEarned: number;
+  const [quizSubmitted, setQuizSubmitted] = useState<boolean>(false);
+  const [quizResult, setQuizResult] = useState<{
+    score: number; total: number; percentage: number;
+    xpEarned: number; totalXp: number; level: number; streakDays: number;
   } | null>(null);
 
-  // ── animations ────────────────────────────────────────────────────────────
-  const cardAnim = useRef(new Animated.Value(0)).current;
-  const feedbackAnim = useRef(new Animated.Value(0)).current;
-  const resultAnim = useRef(new Animated.Value(0)).current;
+  const [showExitModal, setShowExitModal] = useState<boolean>(false);
+  const [attemptHistory, setAttemptHistory] = useState<QuizAttempt[]>([]);
+  const [showHistory, setShowHistory] = useState<boolean>(false);
+  const [confettiFired, setConfettiFired] = useState<boolean>(false);
+  
+  const confettiRef = useRef<any>(null);
+  const resultsFadeAnim = useRef(new Animated.Value(0)).current;
+  const resultsScaleAnim = useRef(new Animated.Value(0.85)).current;
+  const resultsScrollRef = useRef<any>(null);
 
-  // ── load quiz ─────────────────────────────────────────────────────────────
-  const loadQuiz = useCallback(async () => {
+  const senyaBounceAnim = useRef(new Animated.Value(0)).current;
+  const senyaShakeAnim = useRef(new Animated.Value(0)).current;
+
+  // ── Audio state ──
+  const [correctSound, setCorrectSound] = useState<Audio.Sound | null>(null);
+  const [wrongSound, setWrongSound] = useState<Audio.Sound | null>(null);
+  const [resultSound, setResultSound] = useState<Audio.Sound | null>(null);
+  const [isSoundPlaying, setIsSoundPlaying] = useState<boolean>(false);
+
+  // ── Play correct answer sound ──
+  async function playCorrectSound() {
+    try {
+      if (isSoundPlaying) return;
+      setIsSoundPlaying(true);
+      if (correctSound) await correctSound.unloadAsync();
+
+      const { sound } = await Audio.Sound.createAsync(
+        CORRECT_SOUND,
+        { shouldPlay: true, isLooping: false, volume: 0.9 }
+      );
+      setCorrectSound(sound);
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+          setCorrectSound(null);
+          setIsSoundPlaying(false);
+        }
+      });
+    } catch (error) {
+      console.error('Failed to play correct sound:', error);
+      setIsSoundPlaying(false);
+    }
+  }
+
+  // ── Play wrong answer sound ──
+  async function playWrongSound() {
+    try {
+      if (isSoundPlaying) return;
+      setIsSoundPlaying(true);
+      if (wrongSound) await wrongSound.unloadAsync();
+
+      const { sound } = await Audio.Sound.createAsync(
+        WRONG_SOUND,
+        { shouldPlay: true, isLooping: false, volume: 0.6 }
+      );
+      setWrongSound(sound);
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+          setWrongSound(null);
+          setIsSoundPlaying(false);
+        }
+      });
+    } catch (error) {
+      console.error('Failed to play wrong sound:', error);
+      setIsSoundPlaying(false);
+    }
+  }
+
+  // ── Play quiz result sound ──
+  async function playResultSound() {
+    try {
+      if (resultSound) await resultSound.unloadAsync();
+
+      const { sound } = await Audio.Sound.createAsync(
+        QUIZ_RESULT_SOUND,
+        { shouldPlay: true, isLooping: false, volume: 0.8 }
+      );
+      setResultSound(sound);
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+          setResultSound(null);
+        }
+      });
+    } catch (error) {
+      console.error('Failed to play result sound:', error);
+    }
+  }
+
+  const animateSenyaCorrect = () => {
+    senyaBounceAnim.setValue(0);
+    Animated.spring(senyaBounceAnim, {
+      toValue: 1, friction: 5, tension: 80, useNativeDriver: true
+    }).start();
+  };
+
+  const animateSenyaIncorrect = () => {
+    senyaShakeAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(senyaShakeAnim, { toValue: 1, duration: 50, useNativeDriver: true }),
+      Animated.timing(senyaShakeAnim, { toValue: -0.8, duration: 40, useNativeDriver: true }),
+      Animated.timing(senyaShakeAnim, { toValue: 0.6, duration: 40, useNativeDriver: true }),
+      Animated.timing(senyaShakeAnim, { toValue: -0.4, duration: 40, useNativeDriver: true }),
+      Animated.timing(senyaShakeAnim, { toValue: 0.2, duration: 40, useNativeDriver: true }),
+      Animated.timing(senyaShakeAnim, { toValue: 0, duration: 30, useNativeDriver: true }),
+    ]).start();
+  };
+
+  // ── Load Quiz Data ──
+  const fetchModuleQuiz = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-      const data = await api.getModuleQuiz(moduleId);
-      setModuleTitle(data.module_title);
-      setQuestions(data.questions || []);
-      setAnswers((data.questions || []).map((q: QuizQuestion) => ({
-        question_id: q.question_id,
-        selected_option_id: null,
-      })));
-    } catch (err: any) {
-      setError(err.message || 'Failed to load quiz');
+      const response = await api.getModuleQuiz(moduleId);
+      if (response.success) {
+        setModuleTitle(response.module_title);
+        setQuestions(response.questions || []);
+        setAttemptHistory(response.attempts || []);
+      }
+    } catch (error) {
+      console.error('Error fetching module quiz:', error);
+      alert('Failed to load module checkpoint. Please try again.');
+      router.back();
     } finally {
       setLoading(false);
     }
   }, [moduleId]);
 
-  useEffect(() => { loadQuiz(); }, [loadQuiz]);
-
-  // ── animate card in ───────────────────────────────────────────────────────
-  const animateCardIn = useCallback(() => {
-    cardAnim.setValue(0);
-    Animated.timing(cardAnim, {
-      toValue: 1, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true,
-    }).start();
-  }, [cardAnim]);
-
   useEffect(() => {
-    if (!loading && questions.length > 0) animateCardIn();
-  }, [loading, currentIndex, animateCardIn, questions.length]);
+    fetchModuleQuiz();
 
-  // ── handle option select ──────────────────────────────────────────────────
-  const handleSelectOption = (optionId: number) => {
-    if (answered) return;
-    setSelectedOption(optionId);
-    setAnswered(true);
-    setAnswers(prev => prev.map(a =>
-      a.question_id === questions[currentIndex].question_id
-        ? { ...a, selected_option_id: optionId }
-        : a
-    ));
-    feedbackAnim.setValue(0);
-    Animated.timing(feedbackAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    return () => {
+      if (correctSound) correctSound.unloadAsync();
+      if (wrongSound) wrongSound.unloadAsync();
+      if (resultSound) resultSound.unloadAsync();
+    };
+  }, [fetchModuleQuiz]);
+
+  // Results screen transitions
+  useEffect(() => {
+    if (quizSubmitted && quizResult) {
+      playResultSound();
+
+      resultsFadeAnim.setValue(0);
+      resultsScaleAnim.setValue(0.85);
+
+      Animated.parallel([
+        Animated.timing(resultsFadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.spring(resultsScaleAnim, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
+      ]).start();
+
+      if (quizResult.percentage >= 60 && !confettiFired) {
+        setTimeout(() => {
+          confettiRef.current?.start();
+          setConfettiFired(true);
+        }, 400);
+      }
+    }
+  }, [quizSubmitted, quizResult]);
+
+  const handleExit = () => {
+    setShowExitModal(false);
+    router.dismiss();
   };
 
-  // ── next question / submit ────────────────────────────────────────────────
-  const handleNext = async () => {
-    if (currentIndex < questions.length - 1) {
-      setCurrentIndex(prev => prev + 1);
-      setSelectedOption(null);
-      setAnswered(false);
-      feedbackAnim.setValue(0);
+  const handleOptionSelect = async (optionIndex: number) => {
+    if (questionRevealed) return;
+    setSelectedOption(optionIndex);
+    setQuestionRevealed(true);
+
+    const currentQ = questions[currentQuestionIndex];
+    const isCorrect = optionIndex === currentQ?.options.findIndex(o => o.is_correct);
+
+    if (isCorrect) {
+      await playCorrectSound();
+      animateSenyaCorrect();
+      setCurrentScore(s => s + 1);
     } else {
-      await handleSubmit();
+      await playWrongSound();
+      animateSenyaIncorrect();
+    }
+
+    const selectedOptionId = currentQ?.options[optionIndex]?.option_id;
+    setQuizAnswers(prev => ({
+      ...prev,
+      [currentQ.question_id]: selectedOptionId
+    }));
+  };
+
+  const handleNextQuestion = () => {
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(i => i + 1);
+      setSelectedOption(null);
+      setQuestionRevealed(false);
+    } else {
+      submitQuiz();
     }
   };
 
-  const handleSubmit = async () => {
+  const submitQuiz = async () => {
     try {
-      setSubmitting(true);
-      const payload = answers.filter(a => a.selected_option_id !== null) as { question_id: number; selected_option_id: number; }[];
-      const result = await api.submitModuleQuiz(moduleId, payload);
-      setResultData({
-        score: result.score,
-        total: result.total,
-        percentage: result.percentage,
-        passed: result.passed,
-        xpEarned: result.xp_earned || 0,
-      });
-      setShowResults(true);
-      Animated.timing(resultAnim, {
-        toValue: 1, duration: 500, easing: Easing.out(Easing.cubic), useNativeDriver: true,
-      }).start();
-    } catch (err: any) {
-      setError(err.message || 'Failed to submit quiz');
+      setLoading(true);
+      const payload = Object.keys(quizAnswers).map(qId => ({
+        question_id: parseInt(qId, 10),
+        selected_option_id: quizAnswers[parseInt(qId, 10)]
+      }));
+
+      const response = await api.submitModuleQuiz(moduleId, payload);
+
+      if (response.success) {
+        setQuizResult({
+          score: response.score,
+          total: response.total,
+          percentage: response.percentage,
+          xpEarned: response.xp_earned || 0,
+          totalXp: response.total_xp || 0,
+          level: response.level || 1,
+          streakDays: response.streak_days || 0,
+        });
+        setQuizSubmitted(true);
+        // Refresh attempts
+        const freshQuiz = await api.getModuleQuiz(moduleId);
+        if (freshQuiz.success) {
+          setAttemptHistory(freshQuiz.attempts || []);
+        }
+      }
+    } catch (error) {
+      console.error('Error submitting module quiz:', error);
+      alert('Failed to submit quiz attempt. Please try again.');
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   };
 
-  const handleRetry = async () => {
-    setShowResults(false);
-    setCurrentIndex(0);
-    setAnswered(false);
-    setSelectedOption(null);
-    setResultData(null);
-    resultAnim.setValue(0);
-    await loadQuiz();
+  // ─── RENDER: Quiz Quiz Area ───────────────────────────────────────────────
+  const renderQuiz = () => {
+    if (questions.length === 0) return null;
+    const currentQuestion = questions[currentQuestionIndex];
+    const totalQuestions = questions.length;
+    const isCorrect = selectedOption !== null && selectedOption === currentQuestion.options.findIndex(o => o.is_correct);
+
+    return (
+      <>
+        <View style={s.glassCard}>
+          <View style={s.progressHeader}>
+            <Text style={s.progressLabel}>Question {currentQuestionIndex + 1} of {totalQuestions}</Text>
+          </View>
+          <View style={s.progressDots}>
+            {questions.map((_, i) => (
+              <View key={i} style={[s.progressDot, {
+                backgroundColor: i < currentQuestionIndex ? '#22c55e' :
+                  i === currentQuestionIndex ? '#2563EB' : 'rgba(15,49,114,0.10)'
+              }]} />
+            ))}
+          </View>
+        </View>
+
+        <View style={[s.glassCard, s.questionCard]}>
+          <Text style={s.questionEmojiSmall}>❓</Text>
+          <Text style={s.questionText}>{currentQuestion.question_text}</Text>
+        </View>
+
+        {currentQuestion.options.map((opt, i) => {
+          const isSel = selectedOption === i;
+          const isCorr = i === currentQuestion.options.findIndex(o => o.is_correct);
+          let bgColor = 'rgba(255,255,255,0.62)';
+          let borderColor = 'rgba(255,255,255,0.85)';
+          let textColor = '#0f3172';
+          let circleBg = 'rgba(15,49,114,0.08)';
+
+          if (questionRevealed) {
+            if (isCorr) { bgColor = 'rgba(236,253,245,0.9)'; borderColor = '#6EE7B7'; textColor = '#065F46'; circleBg = '#10B981'; }
+            else if (isSel) { bgColor = 'rgba(254,242,242,0.9)'; borderColor = '#FCA5A5'; textColor = '#991B1B'; circleBg = '#EF4444'; }
+            else { bgColor = 'rgba(255,255,255,0.35)'; textColor = '#9CA3AF'; }
+          } else if (isSel) {
+            bgColor = 'rgba(239,246,255,0.9)'; borderColor = '#93C5FD'; textColor = '#1D4ED8'; circleBg = '#2563EB';
+          }
+
+          return (
+            <Pressable key={`${currentQuestionIndex}-${i}`} style={[s.optionCard, { backgroundColor: bgColor, borderColor }]}
+              onPress={() => handleOptionSelect(i)} disabled={questionRevealed}>
+              <View style={[s.optionCircle, { backgroundColor: circleBg }]}>
+                {questionRevealed && isCorr ? <CheckCircleIcon color="#fff" /> :
+                  questionRevealed && isSel && !isCorr ? <XCircleIcon color="#fff" /> :
+                    <Text style={[s.optionLetter, { color: isSel ? '#fff' : '#4b7bbb' }]}>{String.fromCharCode(65 + i)}</Text>}
+              </View>
+              <Text style={[s.optionText, { color: textColor }]}>{opt.option_text}</Text>
+            </Pressable>
+          );
+        })}
+
+        <View style={s.feedbackRow}>
+          <Animated.View style={{
+            transform: [
+              { scale: senyaBounceAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.2, 1] }) },
+              { translateY: senyaBounceAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -20, 0] }) },
+              { rotateZ: senyaShakeAnim.interpolate({ inputRange: [-1, -0.5, 0, 0.5, 1], outputRange: ['-6deg', '-3deg', '0deg', '3deg', '6deg'] }) }
+            ]
+          }}>
+            <Image source={require('../../assets/images/img/senya_teaching.png')} style={s.senyaFeedback} contentFit="contain" />
+          </Animated.View>
+          <View style={[s.feedbackBubble, questionRevealed && isCorrect ? s.feedbackCorrect : questionRevealed && !isCorrect ? s.feedbackWrong : {}]}>
+            {questionRevealed && isCorrect && <CheckCircleIcon />}
+            {questionRevealed && !isCorrect && <XCircleIcon />}
+            <Text style={[s.feedbackText, questionRevealed && isCorrect ? { color: '#065f46' } : questionRevealed ? { color: '#991b1b' } : {}]}>
+              {questionRevealed
+                ? (isCorrect ? 'Correct! 🎉' : 'Incorrect! 😅')
+                : 'Read carefully and pick the best answer!'}
+            </Text>
+          </View>
+        </View>
+
+        {questionRevealed && (
+          <Pressable style={[s.primaryBtn, isCorrect && s.goldBtn]} onPress={handleNextQuestion}>
+            <Text style={s.primaryBtnText}>
+              {currentQuestionIndex < totalQuestions - 1 ? 'Next Question →' : 'See Results →'}
+            </Text>
+          </Pressable>
+        )}
+      </>
+    );
   };
 
-  // ── helpers ───────────────────────────────────────────────────────────────
-  const currentQuestion = questions[currentIndex];
-  const isCorrect = answered && currentQuestion?.options.find(o => o.option_id === selectedOption)?.is_correct;
-  const progress = questions.length > 0
-    ? ((currentIndex + (answered ? 1 : 0)) / questions.length) * 100
-    : 0;
+  // ─── RENDER: Results Screen ───────────────────────────────────────────────
+  const renderScoreView = () => {
+    const score = quizResult?.score || 0;
+    const total = quizResult?.total || 0;
+    const pct = quizResult?.percentage || 0;
+    const xpEarned = quizResult?.xpEarned || 0;
+    const stars = pct === 100 ? 3 : pct >= 80 ? 2 : pct >= 50 ? 1 : 0;
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // LOADING
-  // ────────────────────────────────────────────────────────────────────────────
-  if (loading) {
+    const { label, color } =
+      pct === 100 ? { label: 'Perfect Score!', color: '#F59E0B' } :
+        pct >= 80 ? { label: 'Excellent!', color: '#10B981' } :
+          pct >= 60 ? { label: 'Good Job!', color: '#2563EB' } :
+            { label: 'Keep Practicing!', color: '#EF4444' };
+
     return (
-      <SafeAreaView style={s.safe}>
-        <LinearGradient colors={[BG_FROM, BG_MID, BG_TO]} style={StyleSheet.absoluteFillObject} />
-        <View style={s.centered}>
-          <ActivityIndicator size="large" color="#fff" />
-          <Text style={s.loadingText}>Preparing checkpoint quiz…</Text>
+      <Animated.View style={[s.resultsContainer, {
+        opacity: resultsFadeAnim,
+        transform: [{ scale: resultsScaleAnim }],
+      }]}>
+        <View style={[s.glassCard, { alignItems: 'center', paddingVertical: 28 }]}>
+          <Image source={require('../../assets/images/img/senya_teaching.png')} style={s.resultSenya} contentFit="contain" />
+          <Text style={{ fontSize: 40, marginBottom: 4 }}>🏆</Text>
+          <View style={s.starsRow}>
+            {[1, 2, 3].map(i => (
+              <Text key={i} style={[s.star, { opacity: i <= stars ? 1 : 0.2 }]}>⭐</Text>
+            ))}
+          </View>
+          <Text style={[s.resultLabel, { color }]}>{label}</Text>
+          <Text style={s.scoreDisplay}>{score}<Text style={s.scoreTotal}>/{total}</Text></Text>
+          <Text style={s.scoreSubtitle}>correct answers · {pct}%</Text>
+          <View style={s.xpEarnedBadge}>
+            <Text style={s.xpEarnedText}>⚡ +{xpEarned} XP Earned!</Text>
+          </View>
         </View>
-      </SafeAreaView>
-    );
-  }
 
-  // ERROR
-  if (error || questions.length === 0) {
-    return (
-      <SafeAreaView style={s.safe}>
-        <LinearGradient colors={[BG_FROM, BG_MID, BG_TO]} style={StyleSheet.absoluteFillObject} />
-        <View style={s.centered}>
-          <Text style={{ fontSize: 48 }}>😕</Text>
-          <Text style={[s.loadingText, { marginTop: 12 }]}>
-            {error || 'No questions found for this module yet.'}
-          </Text>
-          <Pressable style={s.backBtn} onPress={() => router.back()}>
-            <Text style={s.backBtnText}>← Go Back</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // ────────────────────────────────────────────────────────────────────────────
-  // RESULTS SCREEN
-  // ────────────────────────────────────────────────────────────────────────────
-  if (showResults && resultData) {
-    const { score, total, percentage, passed, xpEarned } = resultData;
-    return (
-      <SafeAreaView style={s.safe}>
-        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-        <LinearGradient colors={[BG_FROM, BG_MID, BG_TO]} style={StyleSheet.absoluteFillObject} />
-
-        <ScrollView
-          contentContainerStyle={s.resultScroll}
-          showsVerticalScrollIndicator={false}
-        >
-          <Animated.View
-            style={[
-              s.resultCard,
-              {
-                opacity: resultAnim,
-                transform: [{
-                  translateY: resultAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }),
-                }],
-              },
-            ]}
-          >
-            {/* Big emoji badge */}
-            <View style={[s.resultBadge, { backgroundColor: passed ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)' }]}>
-              <Text style={{ fontSize: 60 }}>{passed ? '🏆' : '😓'}</Text>
+        {/* Attempt History */}
+        <Pressable style={s.historyToggleBtn} onPress={() => setShowHistory(!showHistory)}>
+          <View style={s.historyToggleLeft}>
+            <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" strokeWidth="2" strokeLinecap="round">
+              <Circle cx="12" cy="12" r="10" />
+              <Path d="M12 6v6l4 2" />
+            </Svg>
+            <Text style={s.historyToggleText}>Checkpoint Attempt History</Text>
+            <View style={s.historyCountBadge}>
+              <Text style={s.historyCountText}>{attemptHistory.length}</Text>
             </View>
+          </View>
+          <Svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1848c8" strokeWidth="2.5">
+            {showHistory ? <Path d="M18 15l-6-6-6 6" /> : <Path d="M6 9l6 6 6-6" />}
+          </Svg>
+        </Pressable>
 
-            <Text style={[s.resultTitle, { color: passed ? GREEN : RED }]}>
-              {passed ? 'Module Cleared!' : 'Not Quite Yet'}
-            </Text>
-            <Text style={s.resultModuleTitle}>{moduleTitle}</Text>
-
-            {/* Score ring */}
-            <View style={s.ringContainer}>
-              <ProgressRing pct={percentage} size={130} />
-              <View style={s.ringInner}>
-                <Text style={s.ringPct}>{Math.round(percentage)}%</Text>
-                <Text style={s.ringLabel}>{score}/{total}</Text>
-              </View>
-            </View>
-
-            {/* Stats */}
-            <View style={s.statRow}>
-              <View style={[s.statBox, { backgroundColor: 'rgba(99,102,241,0.18)' }]}>
-                <Text style={[s.statVal, { color: '#A5B4FC' }]}>{score}</Text>
-                <Text style={s.statLbl}>Correct</Text>
-              </View>
-              <View style={[s.statBox, { backgroundColor: 'rgba(239,68,68,0.18)' }]}>
-                <Text style={[s.statVal, { color: '#FCA5A5' }]}>{total - score}</Text>
-                <Text style={s.statLbl}>Wrong</Text>
-              </View>
-              {xpEarned > 0 && (
-                <View style={[s.statBox, { backgroundColor: 'rgba(16,185,129,0.18)' }]}>
-                  <Text style={[s.statVal, { color: '#6EE7B7' }]}>+{xpEarned}</Text>
-                  <Text style={s.statLbl}>XP</Text>
+        {showHistory && (
+          <View style={s.historyList}>
+            {attemptHistory.length === 0 ? (
+              <Text style={s.historyEmpty}>No previous checkpoint attempts found.</Text>
+            ) : (
+              attemptHistory.map((attempt, index) => (
+                <View key={index} style={s.historyItem}>
+                  <Text style={s.historyItemLabel}>Attempt #{attemptHistory.length - index}</Text>
+                  <View style={s.historyItemScore}>
+                    <Text style={[s.historyItemScoreText, { color: attempt.percentage >= 60 ? '#10B981' : '#EF4444' }]}>
+                      {attempt.percentage}%
+                    </Text>
+                    <Text style={s.historyItemStatus}>
+                      {attempt.percentage >= 60 ? '✅ Passed' : '❌ Failed'}
+                    </Text>
+                  </View>
+                  <Text style={s.historyItemDate}>
+                    {new Date(attempt.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </Text>
                 </View>
-              )}
-            </View>
-
-            {/* Message */}
-            <View style={[s.msgBox, {
-              backgroundColor: passed ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
-              borderColor: passed ? 'rgba(16,185,129,0.4)' : 'rgba(245,158,11,0.4)',
-            }]}>
-              <Text style={[s.msgText, { color: passed ? '#6EE7B7' : '#FCD34D' }]}>
-                {passed
-                  ? `Excellent! You passed with ${Math.round(percentage)}%. The next module is now unlocked! 🎉`
-                  : `You need at least 60% to pass. You scored ${Math.round(percentage)}%. Review the lessons and try again!`}
-              </Text>
-            </View>
-
-            {/* Retry button (only on fail) */}
-            {!passed && (
-              <Pressable style={[s.actionBtn, { backgroundColor: PURPLE }]} onPress={handleRetry}>
-                <Text style={s.actionBtnText}>🔄 Retry Quiz</Text>
-              </Pressable>
+              ))
             )}
+          </View>
+        )}
 
-            {/* Back to path */}
-            <Pressable
-              style={[s.actionBtn, {
-                backgroundColor: passed ? GREEN : 'rgba(255,255,255,0.12)',
-                marginTop: passed ? 0 : 8,
-              }]}
-              onPress={() => router.replace('/(tabs)/lessons' as any)}
-            >
-              <Text style={[s.actionBtnText, !passed && { color: 'rgba(255,255,255,0.6)' }]}>
-                {passed ? '🗺️ Back to Learning Path' : 'Return to Lessons'}
-              </Text>
-            </Pressable>
-          </Animated.View>
-        </ScrollView>
+        {/* Action buttons */}
+        <Pressable style={[s.primaryBtn, { marginTop: 16 }]} onPress={() => {
+          resultsFadeAnim.setValue(0);
+          resultsScaleAnim.setValue(0.85);
+          setQuizSubmitted(false);
+          setCurrentQuestionIndex(0);
+          setSelectedOption(null);
+          setQuestionRevealed(false);
+          setCurrentScore(0);
+          setQuizResult(null);
+          setConfettiFired(false);
+        }}>
+          <Text style={s.primaryBtnText}>↺ Try Checkpoint Again</Text>
+        </Pressable>
+
+        <Pressable style={[s.ghostBtn, { marginTop: 10, flex: 0 }]} onPress={() => {
+          const xpEarned = quizResult?.xpEarned ?? 0;
+          const totalXp = quizResult?.totalXp ?? 0;
+          const currentLevel = quizResult?.level ?? 1;
+          const streakDays = quizResult?.streakDays ?? 0;
+          const previousXp = totalXp - xpEarned;
+
+          const levelNameMap: Record<number, string> = {
+            1: 'Novice Signer', 2: 'Beginner Signer', 3: 'Emerging Signer',
+            4: 'Intermediate Signer', 5: 'Advanced Beginner', 6: 'Competent Signer',
+            7: 'Proficient Signer', 8: 'Advanced Signer', 9: 'Expert Signer', 10: 'Master Signer',
+          };
+          const getNextLevelXp = (level: number): number => {
+            const thresholds: Record<number, number> = {
+              1: 0, 2: 100, 3: 250, 4: 500, 5: 800,
+              6: 1200, 7: 1700, 8: 2300, 9: 3000, 10: 4000,
+            };
+            return thresholds[level + 1] || 4000 + ((level - 9) * 1000);
+          };
+
+          const levelName = levelNameMap[currentLevel] || 'Novice Signer';
+          const nextLevelXp = getNextLevelXp(currentLevel);
+
+          setQuizSubmitted(false);
+          setCurrentQuestionIndex(0);
+          setSelectedOption(null);
+          setQuestionRevealed(false);
+          setCurrentScore(0);
+          setQuizResult(null);
+          setConfettiFired(false);
+
+          if (xpEarned > 0) {
+            router.push({
+              pathname: '/lesson/xp-progress',
+              params: {
+                xpEarned: String(xpEarned),
+                totalXp: String(totalXp),
+                level: String(currentLevel),
+                levelName,
+                previousXp: String(previousXp),
+                nextLevelXp: String(nextLevelXp),
+                showStreak: 'true',
+                streakDays: String(streakDays)
+              }
+            });
+          } else {
+            router.push({
+              pathname: '/lesson/streak',
+              params: {
+                streakDays: String(streakDays),
+                xpEarned: String(xpEarned),
+                totalXp: String(totalXp),
+                level: String(currentLevel),
+                levelName
+              }
+            });
+          }
+        }}>
+          <Text style={s.ghostBtnText}>🏠 Return to Lessons</Text>
+        </Pressable>
+      </Animated.View>
+    );
+  };
+
+  const renderResults = () => {
+    return (
+      <ScrollView
+        ref={resultsScrollRef}
+        style={{ flex: 1, backgroundColor: '#eaf5fd' }}
+        contentContainerStyle={[s.moduleScroll, { paddingBottom: 60 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[s.topBar, { paddingHorizontal: 0 }]}>
+          <Text style={s.logoText}>SEÑAS</Text>
+        </View>
+        {renderScoreView()}
+      </ScrollView>
+    );
+  };
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // RENDER MAIN CONTAINER
+  // ────────────────────────────────────────────────────────────────────────────
+  if (loading && questions.length === 0) {
+    return (
+      <SafeAreaView style={s.loadingContainer}>
+        <View style={s.loadingInner}>
+          <ActivityIndicator size="large" color="#2563EB" />
+          <Text style={s.loadingText}>Loading checkpoint...</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // QUIZ QUESTION SCREEN
-  // ────────────────────────────────────────────────────────────────────────────
-  const cardTranslateX = cardAnim.interpolate({
-    inputRange: [0, 1], outputRange: [SCREEN_WIDTH * 0.12, 0],
-  });
+  const passed = (quizResult?.percentage || 0) >= 60;
 
   return (
-    <SafeAreaView style={s.safe}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      <LinearGradient colors={[BG_FROM, BG_MID, BG_TO]} style={StyleSheet.absoluteFillObject} />
+    <SafeAreaView style={[s.container, { backgroundColor: '#eaf5fd' }]}>
+      <StatusBar barStyle="dark-content" backgroundColor="#eaf5fd" translucent={false} />
 
-      {/* ── Header ── */}
-      <View style={s.header}>
-        <Pressable style={s.headerBackBtn} onPress={() => router.back()}>
-          <BackIcon color="#fff" size={22} />
-        </Pressable>
-        <View style={{ flex: 1, paddingHorizontal: 12 }}>
-          <Text style={s.headerTitle} numberOfLines={1}>{moduleTitle}</Text>
-          <Text style={s.headerSub}>Checkpoint Quiz • {currentIndex + 1} of {questions.length}</Text>
+      {passed && (
+        <View style={s.confettiWrapper}>
+          <ConfettiCannon
+            ref={confettiRef}
+            count={160}
+            origin={{ x: SCREEN_WIDTH / 2, y: 0 }}
+            autoStart={false}
+            fadeOut
+            explosionSpeed={500}
+            fallSpeed={2800}
+            colors={['#FF6B6B', '#FFD93D', '#6BCB77', '#4D96FF', '#FF6FC8', '#845EC2']}
+          />
         </View>
-        <View style={s.qTypeBadge}>
-          <Text style={s.qTypeText}>
-            {currentQuestion.question_type === 'true_false' ? 'T / F' : 'MCQ'}
-          </Text>
-        </View>
-      </View>
+      )}
 
-      {/* ── Progress bar ── */}
-      <View style={s.progressTrack}>
-        <View style={[s.progressFill, { width: `${progress}%` as any }]} />
-      </View>
+      <ExitModal
+        visible={showExitModal}
+        onClose={() => setShowExitModal(false)}
+        onConfirm={handleExit}
+      />
 
-      <ScrollView
-        contentContainerStyle={s.questionScroll}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* ── Question card ── */}
-        <Animated.View
-          style={[
-            s.questionCard,
-            { opacity: cardAnim, transform: [{ translateX: cardTranslateX }] },
-          ]}
-        >
-          <View style={s.qNumPill}>
-            <TrophyIcon size={13} color={PURPLE_LIGHT} />
-            <Text style={s.qNumText}>Question {currentIndex + 1}</Text>
+      {quizSubmitted ? (
+        renderResults()
+      ) : (
+        <ScrollView contentContainerStyle={s.moduleScroll} showsVerticalScrollIndicator={false}>
+          <View style={s.topBar}>
+            <View>
+              <Text style={s.logoText}>SEÑAS</Text>
+              <Text style={s.checkpointSubtitle}>{moduleTitle} Checkpoint</Text>
+            </View>
+            <Pressable style={s.exitBtn} onPress={() => setShowExitModal(true)}>
+              <Text style={s.exitBtnText}>✕ Exit</Text>
+            </Pressable>
           </View>
-          <Text style={s.questionText}>{currentQuestion.question_text}</Text>
-        </Animated.View>
-
-        {/* ── Options ── */}
-        <View style={s.optionsContainer}>
-          {currentQuestion.options.map((option, idx) => {
-            const isSelected = selectedOption === option.option_id;
-            const showCorrect = answered && option.is_correct;
-            const showWrong = answered && isSelected && !option.is_correct;
-
-            let borderColor: string = 'rgba(255,255,255,0.18)';
-            let bg: string = 'rgba(255,255,255,0.07)';
-
-            if (showCorrect) { bg = 'rgba(16,185,129,0.22)'; borderColor = GREEN; }
-            else if (showWrong) { bg = 'rgba(239,68,68,0.22)'; borderColor = RED; }
-            else if (isSelected) { bg = 'rgba(168,85,247,0.25)'; borderColor = PURPLE_LIGHT; }
-
-            const optionLetter = ['A', 'B', 'C', 'D'][idx] ?? String(idx + 1);
-
-            return (
-              <Pressable
-                key={option.option_id}
-                onPress={() => handleSelectOption(option.option_id)}
-                disabled={answered}
-                style={({ pressed }) => [
-                  s.option,
-                  {
-                    backgroundColor: bg,
-                    borderColor,
-                    transform: [{ scale: pressed && !answered ? 0.97 : 1 }],
-                  },
-                ]}
-              >
-                <View style={[s.optionLetter, {
-                  backgroundColor: showCorrect ? GREEN : showWrong ? RED : isSelected ? PURPLE_LIGHT : 'rgba(255,255,255,0.14)',
-                }]}>
-                  {showCorrect
-                    ? <CheckIcon size={14} color="#fff" />
-                    : showWrong
-                      ? <XIcon size={14} color="#fff" />
-                      : <Text style={s.optionLetterText}>{optionLetter}</Text>
-                  }
-                </View>
-                <Text style={s.optionText} numberOfLines={4}>
-                  {option.option_text}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {/* ── Feedback banner ── */}
-        {answered && (
-          <Animated.View
-            style={[
-              s.feedbackBanner,
-              {
-                backgroundColor: isCorrect ? 'rgba(16,185,129,0.18)' : 'rgba(239,68,68,0.18)',
-                borderColor: isCorrect ? GREEN : RED,
-                opacity: feedbackAnim,
-                transform: [{
-                  translateY: feedbackAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }),
-                }],
-              },
-            ]}
-          >
-            <Text style={s.feedbackEmoji}>{isCorrect ? '🎉' : '💡'}</Text>
-            <Text style={[s.feedbackText, { color: isCorrect ? '#6EE7B7' : '#FCA5A5' }]}>
-              {isCorrect
-                ? 'Correct! Great job!'
-                : `Correct: ${currentQuestion.options.find(o => o.is_correct)?.option_text ?? '—'}`}
-            </Text>
-          </Animated.View>
-        )}
-
-        {/* ── Next / Submit ── */}
-        {answered && (
-          <Pressable
-            style={[s.nextBtn, submitting && { opacity: 0.6 }]}
-            onPress={handleNext}
-            disabled={submitting}
-          >
-            {submitting
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={s.nextBtnText}>
-                  {currentIndex < questions.length - 1 ? 'Next Question →' : 'Submit Quiz 🏆'}
-                </Text>
-            }
-          </Pressable>
-        )}
-
-        <View style={{ height: 48 }} />
-      </ScrollView>
+          {renderQuiz()}
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ─── Styles ──────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG_FROM },
+  container: { flex: 1 },
+  questionEmojiSmall: { fontSize: 28, marginBottom: 8 },
 
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
-  loadingText: { color: 'rgba(255,255,255,0.75)', fontSize: 15, marginTop: 14, textAlign: 'center', fontWeight: '600' },
-  backBtn: {
-    marginTop: 24, backgroundColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 16, paddingVertical: 12, paddingHorizontal: 28,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
-  },
-  backBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-
-  // Header
-  header: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 12 : 20,
-    paddingBottom: 12,
-  },
-  headerBackBtn: {
-    width: 38, height: 38, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  headerSub: { color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 1, fontWeight: '600' },
-  qTypeBadge: {
-    backgroundColor: 'rgba(168,85,247,0.35)', borderRadius: 10,
-    paddingVertical: 5, paddingHorizontal: 12,
-    borderWidth: 1.5, borderColor: PURPLE_LIGHT,
-  },
-  qTypeText: { color: PURPLE_LIGHT, fontSize: 11, fontWeight: '900', letterSpacing: 0.4 },
-
-  // Progress bar
-  progressTrack: {
-    marginHorizontal: 16, height: 6,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 6, overflow: 'hidden', marginBottom: 8,
-  },
-  progressFill: {
-    height: '100%', backgroundColor: GOLD, borderRadius: 6,
+  // Confetti
+  confettiWrapper: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    zIndex: 9999, pointerEvents: 'none', elevation: 9999
   },
 
-  // Question area
-  questionScroll: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 },
-  questionCard: {
-    backgroundColor: 'rgba(255,255,255,0.09)',
-    borderRadius: 24,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.14)',
-    padding: 22, marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3, shadowRadius: 16, elevation: 8,
-  },
-  qNumPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: 'rgba(168,85,247,0.2)',
-    borderRadius: 20, alignSelf: 'flex-start',
-    paddingVertical: 4, paddingHorizontal: 12, marginBottom: 14,
-  },
-  qNumText: { color: '#E9D5FF', fontSize: 11, fontWeight: '700' },
-  questionText: { color: '#fff', fontSize: 19, fontWeight: '800', lineHeight: 28 },
+  // Loading / Error
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#eaf5fd' },
+  loadingInner: { alignItems: 'center', gap: 12 },
+  loadingText: { fontSize: 15, fontWeight: '600', color: '#4B7FCC' },
 
-  // Options
-  optionsContainer: { gap: 12, marginBottom: 16 },
-  option: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    borderRadius: 18, borderWidth: 2,
-    paddingVertical: 15, paddingHorizontal: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 3,
-  },
-  optionLetter: {
-    width: 34, height: 34, borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  optionLetterText: { color: '#fff', fontWeight: '900', fontSize: 13 },
-  optionText: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '600', lineHeight: 22 },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 20 },
 
-  // Feedback
-  feedbackBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    borderRadius: 16, borderWidth: 1.5,
-    paddingVertical: 14, paddingHorizontal: 16, marginBottom: 16,
-  },
-  feedbackEmoji: { fontSize: 22 },
-  feedbackText: { flex: 1, fontSize: 13, fontWeight: '700', lineHeight: 19 },
+  // Exit Modal
+  exitModal: { width: '88%', maxWidth: 340, backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: 28, padding: 28, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.18, shadowRadius: 48, elevation: 24 },
+  exitIconBox: { width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(239,68,68,0.10)', borderWidth: 1.5, borderColor: 'rgba(239,68,68,0.18)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  exitTitle: { fontSize: 20, fontWeight: '800', color: '#0f3172', marginBottom: 8 },
+  exitDesc: { fontSize: 13, color: '#6B7280', fontWeight: '500', lineHeight: 20, marginBottom: 24, textAlign: 'center' },
+  exitBtns: { flexDirection: 'row', gap: 12, width: '100%' },
+  stayBtn: { flex: 1, paddingVertical: 13, backgroundColor: 'rgba(15,49,114,0.07)', borderWidth: 1, borderColor: 'rgba(15,49,114,0.10)', borderRadius: 40, alignItems: 'center' },
+  stayText: { fontSize: 14, fontWeight: '700', color: '#0f3172' },
+  exitConfirmBtn: { flex: 1.3, paddingVertical: 13, backgroundColor: '#DC2626', borderRadius: 40, alignItems: 'center', shadowColor: '#DC2626', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 14, elevation: 8 },
+  exitConfirmText: { fontSize: 14, fontWeight: '700', color: '#fff' },
 
-  // Next button
-  nextBtn: {
-    backgroundColor: PURPLE,
-    borderRadius: 18, paddingVertical: 16, alignItems: 'center',
-    shadowColor: PURPLE, shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45, shadowRadius: 14, elevation: 8,
-  },
-  nextBtnText: { color: '#fff', fontWeight: '900', fontSize: 15, letterSpacing: 0.3 },
+  // Layout
+  moduleScroll: { padding: 16, paddingBottom: 60 },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  logoText: { color: '#0f3172', fontSize: 22, fontWeight: '800', letterSpacing: 2 },
+  checkpointSubtitle: { color: '#4b7bbb', fontSize: 12, fontWeight: '600', marginTop: 2 },
+  exitBtn: { backgroundColor: 'rgba(255,255,255,0.7)', borderRadius: 12, paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)' },
+  exitBtnText: { fontSize: 13, fontWeight: '700', color: '#6B7280' },
 
-  // Results
-  resultScroll: {
-    flexGrow: 1, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 20, paddingTop: 48, paddingBottom: 40,
+  // Cards
+  glassCard: { backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)', borderRadius: 20, padding: 18, marginBottom: 12, shadowColor: '#0f3172', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.09, shadowRadius: 12, elevation: 4 },
+  primaryBtn: { flex: 1, backgroundColor: '#1848c8', borderRadius: 60, paddingVertical: 14, alignItems: 'center', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.28, shadowRadius: 18, elevation: 10 },
+  goldBtn: { backgroundColor: '#D97706' },
+  primaryBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  ghostBtn: { flex: 1, backgroundColor: 'rgba(255,255,255,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)', borderRadius: 60, paddingVertical: 14, alignItems: 'center' },
+  ghostBtnText: { fontSize: 15, fontWeight: '700', color: '#0f3172' },
+
+  // ProgressDots
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  progressLabel: { fontSize: 12, fontWeight: '700', color: '#0f3172' },
+  progressDots: { flexDirection: 'row', gap: 4 },
+  progressDot: { flex: 1, height: 5, borderRadius: 99 },
+
+  // Question Area
+  questionCard: { alignItems: 'center', paddingVertical: 24 },
+  questionText: { fontSize: 16, fontWeight: '800', color: '#0f3172', textAlign: 'center', lineHeight: 24 },
+
+  // Option Cards
+  optionCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderRadius: 16, padding: 13, marginBottom: 8 },
+  optionCircle: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  optionLetter: { fontSize: 13, fontWeight: '800' },
+  optionText: { flex: 1, fontSize: 14, fontWeight: '600', lineHeight: 20 },
+
+  // Feedback Bubble
+  feedbackRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginVertical: 12 },
+  senyaFeedback: { width: 80, height: 80, flexShrink: 0 },
+  feedbackBubble: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 7, backgroundColor: 'rgba(255,255,255,0.75)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)', borderRadius: 16, padding: 12 },
+  feedbackCorrect: { backgroundColor: 'rgba(236,253,245,0.88)', borderColor: '#a7f3d0' },
+  feedbackWrong: { backgroundColor: 'rgba(254,242,242,0.88)', borderColor: '#fecaca' },
+  feedbackText: { flex: 1, fontSize: 12.5, fontWeight: '500', color: '#0f3172', lineHeight: 18 },
+
+  // Results styling
+  resultsContainer: { gap: 4 },
+  resultSenya: { width: 90, height: 90, marginBottom: 8 },
+  starsRow: { flexDirection: 'row', gap: 4, marginVertical: 6 },
+  star: { fontSize: 28 },
+  resultLabel: { fontSize: 22, fontWeight: '800', marginBottom: 2 },
+  scoreDisplay: { fontSize: 64, fontWeight: '900', color: '#0f3172', lineHeight: 72 },
+  scoreTotal: { fontSize: 28, opacity: 0.5 },
+  scoreSubtitle: { fontSize: 14, color: '#6B7280', fontWeight: '500', marginBottom: 12 },
+  xpEarnedBadge: { backgroundColor: 'rgba(245,158,11,0.15)', borderRadius: 99, paddingVertical: 6, paddingHorizontal: 18 },
+  xpEarnedText: { fontSize: 14, fontWeight: '800', color: '#92400E' },
+
+  // Attempts History list in results
+  historyToggleBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#EFF6FF', borderRadius: 14, paddingVertical: 13, paddingHorizontal: 16,
+    borderWidth: 1.5, borderColor: '#BFDBFE',
   },
-  resultCard: {
-    width: '100%',
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 28, borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.14)',
-    padding: 28, alignItems: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.4, shadowRadius: 24, elevation: 12,
-  },
-  resultBadge: {
-    width: 100, height: 100, borderRadius: 50,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
-  },
-  resultTitle: { fontSize: 28, fontWeight: '900', marginBottom: 4 },
-  resultModuleTitle: { color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: '600', marginBottom: 24 },
-  ringContainer: {
-    position: 'relative', width: 130, height: 130,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 24,
-  },
-  ringInner: { position: 'absolute', alignItems: 'center' },
-  ringPct: { color: '#fff', fontSize: 28, fontWeight: '900' },
-  ringLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: '700', marginTop: 2 },
-  statRow: { flexDirection: 'row', gap: 10, marginBottom: 20, width: '100%' },
-  statBox: { flex: 1, borderRadius: 16, paddingVertical: 14, alignItems: 'center' },
-  statVal: { fontSize: 22, fontWeight: '900' },
-  statLbl: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.5)', marginTop: 2 },
-  msgBox: { width: '100%', borderRadius: 16, borderWidth: 1.5, padding: 16, marginBottom: 20 },
-  msgText: { fontSize: 13, fontWeight: '600', lineHeight: 20, textAlign: 'center' },
-  actionBtn: {
-    width: '100%', borderRadius: 18, paddingVertical: 16,
-    alignItems: 'center', marginBottom: 10,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.2, shadowRadius: 10, elevation: 5,
-  },
-  actionBtnText: { color: '#fff', fontWeight: '900', fontSize: 15 },
+  historyToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  historyToggleText: { fontSize: 14, fontWeight: '700', color: '#1D4ED8' },
+  historyCountBadge: { backgroundColor: '#2563EB', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  historyCountText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+  historyList: { backgroundColor: 'rgba(255,255,255,0.62)', borderRadius: 14, padding: 12, marginTop: 4, borderWidth: 1, borderColor: 'rgba(255,255,255,0.85)' },
+  historyEmpty: { fontSize: 13, color: '#9CA3AF', textAlign: 'center', paddingVertical: 16 },
+  historyItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(15,49,114,0.06)' },
+  historyItemLabel: { fontSize: 13, fontWeight: '600', color: '#0f3172' },
+  historyItemScore: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  historyItemScoreText: { fontSize: 14, fontWeight: '800' },
+  historyItemStatus: { fontSize: 11, fontWeight: '600', color: '#6B7280' },
+  historyItemDate: { fontSize: 10, color: '#9CA3AF' },
 });

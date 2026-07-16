@@ -599,7 +599,7 @@ export default function Lessons() {
               <Text style={styles.unitDesc}>
                 {activeTab === 0
                   ? "Master the alphabet and essential greetings"
-                  : "Finish every module's quiz to unlock the next one"}
+                  : "Lessons that your Teacher assign to you"}
               </Text>
             </View>
 
