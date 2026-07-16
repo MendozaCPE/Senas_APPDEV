@@ -19,6 +19,7 @@ export default function RootLayout() {
         <Stack.Screen name="gesture/alphabet1" options={{ headerShown: false }} />
         <Stack.Screen name="gesture/alphabet2" options={{ headerShown: false }} />
         <Stack.Screen name="gesture/webview-camera" options={{ headerShown: false }} />
+        <Stack.Screen name="module-quiz/[id]" options={{ headerShown: false }} />
       </Stack>
 
     </>

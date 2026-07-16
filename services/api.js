@@ -601,6 +601,57 @@ export const api = {
         }
     },
 
+    /**
+     * Fetch the 10-question module checkpoint quiz for a given module
+     */
+    getModuleQuiz: async (moduleId) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) throw new Error('No token found. Please login first.');
 
+            const response = await fetch(`${API_URL}/student/module/${moduleId}/quiz`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    ...baseHeaders,
+                },
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Failed to fetch module quiz');
+            return data;
+        } catch (error) {
+            console.error('❌ Error fetching module quiz:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Submit answers for the module checkpoint quiz
+     * @param {number} moduleId
+     * @param {Array<{question_id: number, selected_option_id: number}>} answers
+     */
+    submitModuleQuiz: async (moduleId, answers) => {
+        try {
+            const token = await AsyncStorage.getItem('userToken');
+            if (!token) throw new Error('No token found. Please login first.');
+
+            const response = await fetch(`${API_URL}/student/module/${moduleId}/quiz/submit`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    ...baseHeaders,
+                },
+                body: JSON.stringify({ answers }),
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Failed to submit module quiz');
+            return data;
+        } catch (error) {
+            console.error('❌ Error submitting module quiz:', error);
+            throw error;
+        }
+    },
 
 };
