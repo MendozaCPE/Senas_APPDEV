@@ -1,4 +1,6 @@
+// app/(tabs)/lessons.tsx
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -15,7 +17,7 @@ import {
   Text,
   View
 } from 'react-native';
-import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
+import Svg, { Circle, Line, Path } from 'react-native-svg';
 import {
   AlphabetIcon,
   BookIcon,
@@ -29,22 +31,16 @@ import { api } from '../../services/api';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-// ── GRADIENT BACKGROUND COLORS ─────────────────────────────────────
-const GRADIENT = {
-  start: '#87CEEB',
-  mid: '#B3E5FC',
-  mid2: '#E3F2FD',
-  end: '#F5F9FF',
-};
-
 // Mascot asset path
 const MascotImage = require('../../assets/images/img/senyas_logo.png');
 
-// Design Geometry Constants
-const NODE_ROW_HEIGHT = 145;
-const NODE_RADIUS = 36;
+// ── Design Geometry Constants ──────────────────────────────────────────
+const NODE_ROW_HEIGHT = 150;
+const NODE_RADIUS = 38;
 const HORIZ_PADDING = 50;
 const MAP_WIDTH = screenWidth - HORIZ_PADDING * 2;
+const TOP_PADDING = 130;    // space above the last (highest-level) node — room for the finish banner
+const BOTTOM_PADDING = 140; // space below the first node — room for the start marker
 
 // Vibrant, kid-friendly accent colors for unlocked/completed nodes
 const ACCENT_COLORS = [
@@ -57,14 +53,18 @@ const ACCENT_COLORS = [
   '#E11D48',
 ];
 
-// Helper to determine zigzag X, Y coordinates
-const getNodePosition = (index: number) => {
+// Level path zigzags left/right like a Candy-Crush-style board.
+// Index 0 sits at the BOTTOM of the map; higher indices climb upward.
+const getNodePosition = (index: number, total: number) => {
   const cycle = [0.5, 0.76, 0.5, 0.24];
   const xPct = cycle[index % cycle.length];
   const x = HORIZ_PADDING + MAP_WIDTH * xPct;
-  const y = index * NODE_ROW_HEIGHT + NODE_ROW_HEIGHT / 2;
+  const contentHeight = total * NODE_ROW_HEIGHT + TOP_PADDING + BOTTOM_PADDING;
+  const y = contentHeight - BOTTOM_PADDING - (index * NODE_ROW_HEIGHT + NODE_ROW_HEIGHT / 2);
   return { x, y };
 };
+
+const getContentHeight = (total: number) => total * NODE_ROW_HEIGHT + TOP_PADDING + BOTTOM_PADDING;
 
 // Custom Play Icon
 function PlayIcon({ color = '#fff', size = 24 }: { color?: string; size?: number }) {
@@ -75,21 +75,176 @@ function PlayIcon({ color = '#fff', size = 24 }: { color?: string; size?: number
   );
 }
 
-// Animated Cloud Component
-function AnimatedCloud({ scale = 1, opacity = 0.5 }) {
+// Duolingo-style star for the current lesson
+function StarIcon({ color = '#fff', size = 24 }: { color?: string; size?: number }) {
   return (
-    <Svg width={120 * scale} height={60 * scale} viewBox="0 0 120 60" opacity={opacity}>
-      <Defs>
-        <LinearGradient id="cloudGrad" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.9" />
-          <Stop offset="100%" stopColor="#E0F2FE" stopOpacity="0.5" />
-        </LinearGradient>
-      </Defs>
-      <Path
-        d="M20 40 C10 40 5 30 12 22 C8 12 20 5 30 10 C38 2 52 2 60 8 C68 3 80 5 85 14 C95 12 105 18 100 28 C110 35 108 48 95 50 L25 50 C18 50 14 45 20 40Z"
-        fill="url(#cloudGrad)"
-      />
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <Path d="M12 2.5l2.86 6.24 6.86.66-5.2 4.6 1.56 6.75L12 17.02l-6.08 3.73 1.56-6.75-5.2-4.6 6.86-.66L12 2.5z" />
     </Svg>
+  );
+}
+
+// Progress ring drawn around the current lesson's node, showing % completion
+function ProgressRing({ size, strokeWidth, pct, trackColor = 'rgba(255,255,255,0.3)', fillColor = '#FFC800' }: {
+  size: number; strokeWidth: number; pct: number; trackColor?: string; fillColor?: string;
+}) {
+  const r = (size - strokeWidth) / 2;
+  const cx = size / 2;
+  const cy = size / 2;
+  const circumference = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, pct));
+  const dash = (clamped / 100) * circumference;
+
+  return (
+    <Svg width={size} height={size} style={{ position: 'absolute' }}>
+      <Circle cx={cx} cy={cy} r={r} stroke={trackColor} strokeWidth={strokeWidth} fill="none" />
+      {clamped > 0 && (
+        <Circle
+          cx={cx}
+          cy={cy}
+          r={r}
+          stroke={fillColor}
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={`${dash} ${circumference}`}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${cx} ${cy})`}
+        />
+      )}
+    </Svg>
+  );
+}
+
+// ── Cloud shape variants — same motif used across splash/login/onboarding/dashboard ──
+function CloudPuffs({ cw, ch, variant }: { cw: number; ch: number; variant: number }) {
+  const w = '#ffffff';
+  switch (variant % 6) {
+    case 0:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.08, width: cw * 0.50, height: ch * 0.72, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.35, width: cw * 0.60, height: ch * 0.88, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0, width: cw, height: ch * 0.52, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+    case 1:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.20, width: cw * 0.60, height: ch * 1.00, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0, width: cw * 0.50, height: ch * 0.60, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.52, width: cw * 0.48, height: ch * 0.55, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0, width: cw, height: ch * 0.40, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+    case 2:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.04, width: cw * 0.40, height: ch * 0.95, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.48, width: cw * 0.46, height: ch * 0.80, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0, width: cw, height: ch * 0.45, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+    default:
+      return (
+        <>
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.00, width: cw * 0.38, height: ch * 0.65, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.25, width: cw * 0.42, height: ch * 0.90, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: cw * 0.55, width: cw * 0.38, height: ch * 0.70, borderRadius: 999, backgroundColor: w }} />
+          <View style={{ position: 'absolute', bottom: 0, left: 0, width: cw, height: ch * 0.42, borderRadius: 999, backgroundColor: w }} />
+        </>
+      );
+  }
+}
+
+function DriftingCloud({ top, size = 1, duration = 22000, startX = 0, opacity = 0.5, variant = 0, trackWidth }: {
+  top: number; size?: number; duration?: number; startX?: number; opacity?: number; variant?: number; trackWidth: number;
+}) {
+  const totalTravel = trackWidth + trackWidth * 0.5;
+  const initialX = -trackWidth * 0.5 + (startX % totalTravel);
+  const translateX = useRef(new Animated.Value(initialX)).current;
+
+  useEffect(() => {
+    const remaining = totalTravel - (initialX + trackWidth * 0.5);
+    const firstDuration = Math.max((remaining / totalTravel) * duration, 100);
+
+    Animated.timing(translateX, {
+      toValue: trackWidth + trackWidth * 0.5,
+      duration: firstDuration,
+      easing: Easing.linear,
+      useNativeDriver: true,
+    }).start(() => {
+      translateX.setValue(-trackWidth * 0.5);
+      Animated.loop(
+        Animated.timing(translateX, {
+          toValue: trackWidth + trackWidth * 0.5,
+          duration,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      ).start();
+    });
+
+    return () => translateX.stopAnimation();
+  }, []);
+
+  const cw = 90 * size;
+  const ch = 34 * size;
+
+  return (
+    <Animated.View pointerEvents="none" style={{ position: 'absolute', top, left: 0, opacity, transform: [{ translateX }] }}>
+      <View style={{ width: cw, height: ch * 1.1 }}>
+        <CloudPuffs cw={cw} ch={ch} variant={variant} />
+      </View>
+    </Animated.View>
+  );
+}
+
+// Small twinkling sparkle dots scattered on the map for a candy-crush-y feel
+function SparkleField({ contentHeight }: { contentHeight: number }) {
+  const twinkle = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(twinkle, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(twinkle, { toValue: 0, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  const opacity = twinkle.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.85] });
+
+  // Deterministic pseudo-random scatter based on a seed
+  const dots = Array.from({ length: Math.max(6, Math.floor(contentHeight / 160)) }).map((_, i) => {
+    const seed = (i * 137.5) % 1;
+    const seed2 = (i * 63.7) % 1;
+    return {
+      left: 20 + seed * (screenWidth - 40),
+      top: 40 + seed2 * (contentHeight - 80),
+      size: 3 + (i % 3),
+    };
+  });
+
+  return (
+    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      {dots.map((d, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            position: 'absolute',
+            left: d.left,
+            top: d.top,
+            width: d.size,
+            height: d.size,
+            borderRadius: d.size / 2,
+            backgroundColor: '#ffffff',
+            opacity,
+          }}
+        />
+      ))}
+    </View>
   );
 }
 
@@ -100,9 +255,8 @@ const generateSPath = (points: { x: number; y: number }[]) => {
   for (let i = 0; i < points.length - 1; i++) {
     const p1 = points[i];
     const p2 = points[i + 1];
-    const cp1y = p1.y + NODE_ROW_HEIGHT * 0.45;
-    const cp2y = p2.y - NODE_ROW_HEIGHT * 0.45;
-    d += ` C ${p1.x} ${cp1y}, ${p2.x} ${cp2y}, ${p2.x} ${p2.y}`;
+    const cpy = (p1.y + p2.y) / 2;
+    d += ` C ${p1.x} ${cpy}, ${p2.x} ${cpy}, ${p2.x} ${p2.y}`;
   }
   return d;
 };
@@ -122,7 +276,6 @@ const getCategoryIcon = (category: string, color: string, size: number = 24) => 
 };
 
 // ── MOCK DATA ──────────────────────────────────────────────────────────
-// Default Baseline Lessons (Tab 0)
 const defaultLessonsData = [
   {
     id: 1,
@@ -135,7 +288,8 @@ const defaultLessonsData = [
     xp: 15,
     done: true,
     active: false,
-    locked: false
+    locked: false,
+    progressPercent: 100
   },
   {
     id: 2,
@@ -148,7 +302,8 @@ const defaultLessonsData = [
     xp: 20,
     done: true,
     active: false,
-    locked: false
+    locked: false,
+    progressPercent: 100
   },
   {
     id: 3,
@@ -161,7 +316,8 @@ const defaultLessonsData = [
     xp: 15,
     done: false,
     active: true,
-    locked: false
+    locked: false,
+    progressPercent: 40
   },
   {
     id: 4,
@@ -174,7 +330,8 @@ const defaultLessonsData = [
     xp: 25,
     done: false,
     active: false,
-    locked: true
+    locked: true,
+    progressPercent: 0
   },
   {
     id: 5,
@@ -187,11 +344,11 @@ const defaultLessonsData = [
     xp: 20,
     done: false,
     active: false,
-    locked: true
+    locked: true,
+    progressPercent: 0
   },
 ];
 
-// ── MODULE/LESSON DATA STRUCTURE ──────────────────────────────────────
 interface Lesson {
   id: number;
   lesson_id?: number;
@@ -202,7 +359,6 @@ interface Lesson {
   total_steps?: number;
   has_quiz?: boolean;
   module_id?: number;
-  // Display properties
   category: string;
   desc: string;
   color: string;
@@ -212,6 +368,7 @@ interface Lesson {
   done: boolean;
   active: boolean;
   locked: boolean;
+  progressPercent?: number;
 }
 
 interface Module {
@@ -226,109 +383,26 @@ export default function Lessons() {
   const [activeTab, setActiveTab] = useState<number>(0);
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  // Profile status
   const [streak, setStreak] = useState<number>(12);
   const [xp, setXp] = useState<number>(150);
 
-  // Teacher modules state
   const [modules, setModules] = useState<Module[]>([]);
   const [loadingModules, setLoadingModules] = useState<boolean>(false);
-
-  // Current module index for tab navigation
   const [currentModuleIndex, setCurrentModuleIndex] = useState<number>(0);
-
-  // Prevent rapid clicking
   const [isNavigating, setIsNavigating] = useState<boolean>(false);
+
+  const scrollRef = useRef<ScrollView>(null);
 
   // Animations
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const tabFadeAnim = useRef(new Animated.Value(1)).current;
   const bobAnim = useRef(new Animated.Value(0)).current;
-  const sunAnim = useRef(new Animated.Value(0)).current;
-
-  // Cloud position anims
-  const cloud1Anim = useRef(new Animated.Value(-200)).current;
-  const cloud2Anim = useRef(new Animated.Value(screenWidth + 200)).current;
-  const cloud3Anim = useRef(new Animated.Value(-250)).current;
-  const cloud4Anim = useRef(new Animated.Value(screenWidth + 250)).current;
-
-  // Sun glow animation
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(sunAnim, {
-          toValue: 1,
-          duration: 3000,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: false,
-        }),
-        Animated.timing(sunAnim, {
-          toValue: 0,
-          duration: 3000,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: false,
-        }),
-      ])
-    ).start();
-  }, []);
-
-  // Cloud animations
-  useEffect(() => {
-    const startCloud1 = () => {
-      cloud1Anim.setValue(-200);
-      Animated.timing(cloud1Anim, {
-        toValue: screenWidth + 200,
-        duration: 45000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }).start(() => startCloud1());
-    };
-
-    const startCloud2 = () => {
-      cloud2Anim.setValue(screenWidth + 200);
-      Animated.timing(cloud2Anim, {
-        toValue: -200,
-        duration: 55000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }).start(() => startCloud2());
-    };
-
-    const startCloud3 = () => {
-      cloud3Anim.setValue(-250);
-      Animated.timing(cloud3Anim, {
-        toValue: screenWidth + 250,
-        duration: 50000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }).start(() => startCloud3());
-    };
-
-    const startCloud4 = () => {
-      cloud4Anim.setValue(screenWidth + 250);
-      Animated.timing(cloud4Anim, {
-        toValue: -250,
-        duration: 60000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }).start(() => startCloud4());
-    };
-
-    startCloud1();
-    startCloud2();
-    startCloud3();
-    startCloud4();
-  }, []);
 
   // Pulse loop for active checkpoint
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1800,
-          useNativeDriver: true,
-        }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1800, useNativeDriver: true }),
       ])
     );
     pulse.start();
@@ -339,16 +413,8 @@ export default function Lessons() {
   useEffect(() => {
     const bob = Animated.loop(
       Animated.sequence([
-        Animated.timing(bobAnim, {
-          toValue: 1,
-          duration: 1600,
-          useNativeDriver: true,
-        }),
-        Animated.timing(bobAnim, {
-          toValue: 0,
-          duration: 1600,
-          useNativeDriver: true,
-        }),
+        Animated.timing(bobAnim, { toValue: 1, duration: 1600, useNativeDriver: true }),
+        Animated.timing(bobAnim, { toValue: 0, duration: 1600, useNativeDriver: true }),
       ])
     );
     bob.start();
@@ -366,11 +432,8 @@ export default function Lessons() {
 
           const transformedLessons: Lesson[] = lessons.map((lesson: any, index: number) => {
             const color = ACCENT_COLORS[index % ACCENT_COLORS.length];
-
-            // Check if this is the first lesson in the module
             const isFirstLesson = index === 0;
 
-            // Check if previous lesson is completed with passing score
             let isNextLesson = false;
             if (index > 0) {
               const prevLesson = lessons[index - 1];
@@ -379,19 +442,13 @@ export default function Lessons() {
               }
             }
 
-            // 🔥 Logic for locking:
-            // 1. First lesson is ALWAYS unlocked
-            // 2. If this is the next lesson after a completed one, it's UNLOCKED (even if failed - to retry)
-            // 3. Other lessons: lock if status is failed or is_locked is true
-            // 4. Completed lessons are always unlocked (show checkmark)
             let isLocked = false;
-
             if (isFirstLesson) {
-              isLocked = false; // First lesson always unlocked
+              isLocked = false;
             } else if (lesson.status === 'completed' && (lesson.score || 0) >= 60) {
-              isLocked = false; // Completed lessons are unlocked
+              isLocked = false;
             } else if (isNextLesson) {
-              isLocked = false; // Next lesson after a completed one is unlocked (to retry)
+              isLocked = false;
             } else {
               isLocked = (lesson.is_locked === true || lesson.status === 'failed');
             }
@@ -399,7 +456,17 @@ export default function Lessons() {
             const isDone = lesson.status === 'completed' && (lesson.score || 0) >= 60;
             const isActive = lesson.status === 'in_progress' || (isNextLesson && (lesson.status === 'pending' || lesson.status === 'failed'));
 
-            console.log(`📚 Lesson ${lesson.lesson_id}: "${lesson.title}" - status: ${lesson.status}, is_locked: ${lesson.is_locked}, isFirstLesson: ${isFirstLesson}, isNextLesson: ${isNextLesson}, final: ${isLocked ? 'LOCKED' : 'UNLOCKED'}`);
+            // Progress ring value: prefer real step progress, fall back to a sensible default per status
+            let progressPercent = 0;
+            if (isDone) {
+              progressPercent = 100;
+            } else if (lesson.current_step && lesson.total_steps) {
+              progressPercent = Math.round((lesson.current_step / lesson.total_steps) * 100);
+            } else if (lesson.status === 'in_progress') {
+              progressPercent = 45;
+            } else if (lesson.status === 'failed') {
+              progressPercent = 25;
+            }
 
             return {
               id: lesson.lesson_id || lesson.id,
@@ -420,6 +487,7 @@ export default function Lessons() {
               done: isDone,
               active: isActive,
               locked: isLocked,
+              progressPercent,
             };
           });
 
@@ -444,21 +512,18 @@ export default function Lessons() {
       setLoadingModules(false);
     }
   };
+
   useEffect(() => {
     loadModulesData();
   }, []);
 
-  // Compute current lessons based on active tab
   const getCurrentLessons = (): Lesson[] => {
     if (activeTab === 0) {
       return defaultLessonsData;
     }
-
-    // Teacher's Modules
     if (modules.length === 0 || currentModuleIndex >= modules.length) {
       return [];
     }
-
     const currentModule = modules[currentModuleIndex];
     return currentModule.lessons || [];
   };
@@ -466,32 +531,18 @@ export default function Lessons() {
   const currentLessons = getCurrentLessons();
   const totalNodes = currentLessons.length;
 
-  // Get module name for display
   const getModuleDisplayName = (): string => {
-    if (activeTab === 0) {
-      return "Unit 1: Basics";
-    }
-
-    if (modules.length === 0 || currentModuleIndex >= modules.length) {
-      return "No Module";
-    }
-
+    if (activeTab === 0) return "Unit 1: Basics";
+    if (modules.length === 0 || currentModuleIndex >= modules.length) return "No Module";
     return modules[currentModuleIndex].title;
   };
 
   const getModuleDescription = (): string => {
-    if (activeTab === 0) {
-      return "Master the alphabet and essential greetings";
-    }
-
-    if (modules.length === 0 || currentModuleIndex >= modules.length) {
-      return "No lessons available";
-    }
-
+    if (activeTab === 0) return "Master the alphabet and essential greetings";
+    if (modules.length === 0 || currentModuleIndex >= modules.length) return "No lessons available";
     return modules[currentModuleIndex].description || "Complete the lessons in this module";
   };
 
-  // Find index of active node
   const getActivePathIndex = () => {
     let lastActiveOrDone = 0;
     for (let i = 0; i < currentLessons.length; i++) {
@@ -504,44 +555,39 @@ export default function Lessons() {
 
   const activePathIndex = getActivePathIndex();
 
-  // Generate node coordinates
-  const points = currentLessons.map((_, i) => getNodePosition(i));
+  // Node coordinates — index 0 anchored at the bottom, climbing upward
+  const points = currentLessons.map((_, i) => getNodePosition(i, totalNodes));
+  const contentHeight = getContentHeight(totalNodes);
   const backgroundPathD = generateSPath(points);
   const progressPathD = generateSPath(points.slice(0, activePathIndex + 1));
 
-  // Switch between Unit 1 and Teacher Modules
+  // Auto-scroll to reveal current progress whenever the level list changes
+  const scrollToActive = () => {
+    if (!points[activePathIndex]) return;
+    const targetY = Math.max(0, points[activePathIndex].y - screenHeight * 0.5);
+    scrollRef.current?.scrollTo({ y: targetY, animated: false });
+  };
+
+  useEffect(() => {
+    const t = setTimeout(scrollToActive, 60);
+    return () => clearTimeout(t);
+  }, [activeTab, currentModuleIndex, modules.length, loadingModules]);
+
   const switchTab = (targetTab: number) => {
     if (targetTab === activeTab || isNavigating) return;
     setIsNavigating(true);
     setExpandedId(null);
-
-    // Immediately update the state, then animate
     setActiveTab(targetTab);
-    if (targetTab === 1) {
-      setCurrentModuleIndex(0);
-    }
+    if (targetTab === 1) setCurrentModuleIndex(0);
 
-    // Simple fade animation
     Animated.sequence([
-      Animated.timing(tabFadeAnim, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-      Animated.timing(tabFadeAnim, {
-        toValue: 1,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setIsNavigating(false);
-    });
+      Animated.timing(tabFadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(tabFadeAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+    ]).start(() => setIsNavigating(false));
   };
 
-  // Navigate between modules (using left/right arrows in banner)
   const navigateModule = (direction: 'prev' | 'next') => {
     if (modules.length === 0 || isNavigating) return;
-
     const newIndex = direction === 'prev'
       ? Math.max(0, currentModuleIndex - 1)
       : Math.min(modules.length - 1, currentModuleIndex + 1);
@@ -549,25 +595,12 @@ export default function Lessons() {
     if (newIndex !== currentModuleIndex) {
       setIsNavigating(true);
       setExpandedId(null);
-
-      // Immediately update the state, then animate
       setCurrentModuleIndex(newIndex);
 
-      // Simple fade animation
       Animated.sequence([
-        Animated.timing(tabFadeAnim, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.timing(tabFadeAnim, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        setIsNavigating(false);
-      });
+        Animated.timing(tabFadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }),
+        Animated.timing(tabFadeAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+      ]).start(() => setIsNavigating(false));
     }
   };
 
@@ -581,91 +614,33 @@ export default function Lessons() {
   const completedNodesCount = currentLessons.filter(l => l.done).length;
   const selectedLesson = currentLessons.find(l => l.id === expandedId);
 
-  // Pulse translations
-  const pulseScale = pulseAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.45],
-  });
-
-  const pulseOpacity = pulseAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.65, 0],
-  });
-
-  // Mascot float translations
-  const bobY = bobAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -8],
-  });
-
-  // Sun glow animation
-  const sunGlow = sunAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.3, 0.8],
-  });
+  const pulseScale = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.45] });
+  const pulseOpacity = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.65, 0] });
+  const bobY = bobAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -8] });
 
   const activePos = points[activePathIndex];
 
-
-
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+
+      {/* Same blue gradient used across splash/login/onboarding/dashboard */}
+      <LinearGradient
+        colors={['#0d326b', '#1e4b8f', '#1a6fd4']}
+        locations={[0, 0.5, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+
+      {/* Drifting clouds, pinned above the map */}
+      <View style={styles.cloudLayer} pointerEvents="none">
+        <DriftingCloud top={30} size={2.0} duration={26000} startX={0} opacity={0.22} variant={0} trackWidth={screenWidth} />
+        <DriftingCloud top={90} size={1.4} duration={20000} startX={screenWidth * 0.5} opacity={0.16} variant={2} trackWidth={screenWidth} />
+        <DriftingCloud top={150} size={1.7} duration={23000} startX={screenWidth * 0.2} opacity={0.14} variant={4} trackWidth={screenWidth} />
+      </View>
 
       <View style={styles.container}>
-        {/* Animated Gradient Background */}
-        <View style={StyleSheet.absoluteFillObject}>
-          <Svg width={screenWidth} height={screenHeight}>
-            <Defs>
-              <LinearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor={GRADIENT.start} stopOpacity="1" />
-                <Stop offset="30%" stopColor={GRADIENT.mid} stopOpacity="0.9" />
-                <Stop offset="70%" stopColor={GRADIENT.mid2} stopOpacity="0.8" />
-                <Stop offset="100%" stopColor={GRADIENT.end} stopOpacity="0.9" />
-              </LinearGradient>
-            </Defs>
-            <Rect width={screenWidth} height={screenHeight} fill="url(#bgGrad)" />
-          </Svg>
-        </View>
-
-        {/* Sun with animated glow */}
-        <Animated.View style={[styles.sunContainer, { opacity: sunGlow }]}>
-          <Svg width="120" height="120" viewBox="0 0 120 120">
-            <Circle cx="60" cy="60" r="45" fill="#FCD34D" opacity="0.9" />
-            <Circle cx="60" cy="60" r="55" fill="#FCD34D" opacity="0.3" />
-            <Circle cx="60" cy="60" r="70" fill="#FCD34D" opacity="0.1" />
-            {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, i) => (
-              <Rect
-                key={i}
-                x="54"
-                y="5"
-                width="12"
-                height="20"
-                rx="6"
-                fill="#FCD34D"
-                opacity="0.6"
-                transform={`rotate(${angle}, 60, 60)`}
-              />
-            ))}
-          </Svg>
-        </Animated.View>
-
-        {/* Floating Clouds */}
-        <View style={styles.floatingSky} pointerEvents="none">
-          <Animated.View style={[styles.cloudWrapper, { top: 40, transform: [{ translateX: cloud1Anim }] }]}>
-            <AnimatedCloud scale={1.5} opacity={0.4} />
-          </Animated.View>
-          <Animated.View style={[styles.cloudWrapper, { top: 180, transform: [{ translateX: cloud2Anim }] }]}>
-            <AnimatedCloud scale={1.2} opacity={0.3} />
-          </Animated.View>
-          <Animated.View style={[styles.cloudWrapper, { top: 350, transform: [{ translateX: cloud3Anim }] }]}>
-            <AnimatedCloud scale={1.8} opacity={0.35} />
-          </Animated.View>
-          <Animated.View style={[styles.cloudWrapper, { top: 500, transform: [{ translateX: cloud4Anim }] }]}>
-            <AnimatedCloud scale={1.3} opacity={0.3} />
-          </Animated.View>
-        </View>
-
         {/* Top Bar */}
         <View style={styles.topBar}>
           <Text style={styles.logoText}>SEÑAS</Text>
@@ -674,7 +649,7 @@ export default function Lessons() {
               <Text style={styles.xpTopText}>⚡ {xp} XP</Text>
             </View>
             <View style={styles.streakBadge}>
-              <FlameIcon size={16} color="#fb923c" />
+              <FlameIcon size={16} color="#fbbf24" />
               <Text style={styles.streakText}>{streak}</Text>
             </View>
           </View>
@@ -683,7 +658,6 @@ export default function Lessons() {
         {/* Unit/Module Banner */}
         <View style={styles.unitBanner}>
           <View style={styles.bannerRow}>
-            {/* Left Arrow - Navigate to previous module or Unit 1 */}
             <Pressable
               style={[styles.arrowButton, (activeTab === 0 || isNavigating) && styles.arrowButtonDisabled]}
               onPress={() => {
@@ -692,7 +666,6 @@ export default function Lessons() {
                 if (currentModuleIndex > 0) {
                   navigateModule('prev');
                 } else {
-                  // If at first module, go back to Unit 1
                   switchTab(0);
                 }
               }}
@@ -707,24 +680,18 @@ export default function Lessons() {
               <Text style={styles.unitTitle}>{getModuleDisplayName()}</Text>
               <Text style={styles.unitDesc}>{getModuleDescription()}</Text>
 
-              {/* Module navigation dots */}
               {activeTab === 1 && modules.length > 1 && (
                 <View style={styles.moduleDotsContainer}>
                   {modules.map((_, index) => (
                     <View
                       key={index}
-                      style={[
-                        styles.moduleDot,
-                        currentModuleIndex === index && styles.moduleDotActive
-                      ]}
+                      style={[styles.moduleDot, currentModuleIndex === index && styles.moduleDotActive]}
                     />
                   ))}
                 </View>
               )}
             </View>
 
-
-            {/* Right Arrow - Navigate to next module or Unit 1 */}
             <Pressable
               style={[
                 styles.arrowButton,
@@ -733,7 +700,6 @@ export default function Lessons() {
               onPress={() => {
                 if (isNavigating) return;
                 if (activeTab === 0) {
-                  // Go to first module
                   switchTab(1);
                 } else if (currentModuleIndex < modules.length - 1) {
                   navigateModule('next');
@@ -755,26 +721,24 @@ export default function Lessons() {
                 <View style={[styles.progressFill, { width: `${pct}%` }]} />
               </View>
               <View style={styles.progressTextRow}>
-                <Text style={styles.progressText}>
-                  {completedNodesCount} of {totalNodes} lessons done
-                </Text>
+                <Text style={styles.progressText}>{completedNodesCount} of {totalNodes} lessons done</Text>
                 <Text style={styles.progressText}>{pct}% Completed</Text>
               </View>
             </View>
           )}
         </View>
 
-        {/* Main Scroll Content */}
+        {/* Level Map — climbs from bottom (Level 1) to top (latest level) */}
         <Animated.View style={[styles.mapContainer, { opacity: tabFadeAnim }]}>
           {activeTab === 1 && loadingModules ? (
             <View style={styles.loaderContainer}>
-              <ActivityIndicator size="large" color="#2563EB" />
+              <ActivityIndicator size="large" color="#fff" />
               <Text style={styles.loaderText}>Loading modules...</Text>
             </View>
           ) : totalNodes === 0 ? (
             <View style={styles.emptyContainer}>
               <View style={styles.emptyIllustrationBox}>
-                <BookIcon size={64} color="#93C5FD" />
+                <BookIcon size={64} color="#fff" />
               </View>
               <Text style={styles.emptyTitle}>
                 {activeTab === 0 ? "No Lessons Yet!" : "No Lessons in this Module"}
@@ -792,45 +756,48 @@ export default function Lessons() {
             </View>
           ) : (
             <ScrollView
-              contentContainerStyle={{ height: totalNodes * NODE_ROW_HEIGHT + 70 }}
+              ref={scrollRef}
+              contentContainerStyle={{ height: contentHeight }}
               showsVerticalScrollIndicator={false}
             >
+              {/* Sparkle decorations */}
+              <SparkleField contentHeight={contentHeight} />
+
               {/* SVG Path Connections */}
               <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-                <Svg width={screenWidth} height={totalNodes * NODE_ROW_HEIGHT}>
-                  {/* Background Track */}
+                <Svg width={screenWidth} height={contentHeight}>
                   {backgroundPathD !== '' && (
                     <Path
                       d={backgroundPathD}
                       fill="none"
-                      stroke="#93C5FD"
+                      stroke="rgba(255,255,255,0.28)"
                       strokeWidth="6"
                       strokeLinecap="round"
                       strokeDasharray="8 12"
-                      opacity={0.4}
                     />
                   )}
-                  {/* Completed Path with Glow */}
                   {progressPathD !== '' && (
                     <>
-                      <Path
-                        d={progressPathD}
-                        fill="none"
-                        stroke="#2563EB"
-                        strokeWidth="12"
-                        strokeLinecap="round"
-                        opacity={0.15}
-                      />
-                      <Path
-                        d={progressPathD}
-                        fill="none"
-                        stroke="#3B82F6"
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                      />
+                      <Path d={progressPathD} fill="none" stroke="#FCD34D" strokeWidth="12" strokeLinecap="round" opacity={0.25} />
+                      <Path d={progressPathD} fill="none" stroke="#FBBF24" strokeWidth="6" strokeLinecap="round" />
                     </>
                   )}
                 </Svg>
+              </View>
+
+              {/* Start marker — bottom of the map */}
+              <View style={[styles.startMarker, { top: contentHeight - BOTTOM_PADDING * 0.42 }]} pointerEvents="none">
+                <View style={styles.startFlag}>
+                  <Text style={styles.startFlagText}>🏁 START</Text>
+                </View>
+              </View>
+
+              {/* Finish marker — top of the map */}
+              <View style={[styles.finishMarker, { top: TOP_PADDING * 0.28 }]} pointerEvents="none">
+                <View style={styles.finishBadge}>
+                  <Text style={styles.finishBadgeText}>🏆</Text>
+                </View>
+                <Text style={styles.finishLabel}>GOAL</Text>
               </View>
 
               {/* Bobbing Mascot */}
@@ -850,50 +817,57 @@ export default function Lessons() {
                   ]}
                   pointerEvents="none"
                 >
-                  <Image
-                    source={MascotImage}
-                    style={styles.mascotImage}
-                    contentFit="contain"
-                  />
+                  <Image source={MascotImage} style={styles.mascotImage} contentFit="contain" />
                   <View style={styles.mascotBubble}>
                     <Text style={styles.mascotBubbleText}>🌟 You got this!</Text>
                   </View>
                 </Animated.View>
               )}
 
-              {/* Checkpoint Nodes */}
+              {/* Checkpoint Nodes — Duolingo style: gold = done, blue star + ring = current, gray = locked */}
               {currentLessons.map((lesson, index) => {
                 const pos = points[index];
                 const isSelected = expandedId === lesson.id;
+                const isCurrent = lesson.active && !lesson.locked;
+                const pct = lesson.progressPercent ?? (lesson.done ? 100 : 0);
 
+                // Duolingo palette: gold for completed, bright blue for the current lesson, gray for locked
                 let nodeBg = lesson.color;
                 let iconColor = '#fff';
 
                 if (lesson.locked) {
-                  nodeBg = '#CBD5E1';
-                  iconColor = '#64748B';
+                  nodeBg = 'rgba(255,255,255,0.25)';
+                  iconColor = 'rgba(255,255,255,0.7)';
+                } else if (lesson.done) {
+                  nodeBg = '#FFC800';
+                  iconColor = '#B8860B';
+                } else if (isCurrent) {
+                  nodeBg = '#1CB0F6';
+                  iconColor = '#fff';
                 }
+
+                const RING_SIZE = NODE_RADIUS * 2 + 20;
 
                 return (
                   <View
                     key={lesson.id}
-                    style={[
-                      styles.nodeAbsoluteContainer,
-                      {
-                        left: pos.x - NODE_RADIUS,
-                        top: pos.y - NODE_RADIUS,
-                      },
-                    ]}
+                    style={[styles.nodeAbsoluteContainer, { left: pos.x - NODE_RADIUS, top: pos.y - NODE_RADIUS }]}
                   >
-                    {lesson.active && !lesson.locked && (
+                    {/* Platform "tile" the checkpoint stands on */}
+                    <View style={[styles.platform, { backgroundColor: lesson.locked ? 'rgba(255,255,255,0.10)' : `${nodeBg}30` }]} />
+
+                    {/* Progress ring — only around the current, not-yet-finished lesson */}
+                    {isCurrent && (
+                      <View style={{ position: 'absolute', width: RING_SIZE, height: RING_SIZE, left: -10, top: -10, alignItems: 'center', justifyContent: 'center' }}>
+                        <ProgressRing size={RING_SIZE} strokeWidth={5} pct={pct} trackColor="rgba(255,255,255,0.30)" fillColor="#FFC800" />
+                      </View>
+                    )}
+
+                    {isCurrent && (
                       <Animated.View
                         style={[
                           styles.pulseRing,
-                          {
-                            backgroundColor: lesson.color,
-                            transform: [{ scale: pulseScale }],
-                            opacity: pulseOpacity,
-                          },
+                          { backgroundColor: '#1CB0F6', transform: [{ scale: pulseScale }], opacity: pulseOpacity },
                         ]}
                       />
                     )}
@@ -904,7 +878,7 @@ export default function Lessons() {
                         styles.nodeCircle,
                         {
                           backgroundColor: nodeBg,
-                          shadowColor: lesson.locked ? '#94A3B8' : lesson.color,
+                          shadowColor: lesson.locked ? '#0d326b' : nodeBg,
                           transform: [{ scale: pressed ? 0.95 : 1 }],
                         },
                       ]}
@@ -912,24 +886,24 @@ export default function Lessons() {
                       {lesson.locked ? (
                         <LockIcon size={24} color={iconColor} />
                       ) : lesson.done ? (
-                        <CheckIcon size={26} color={iconColor} />
-                      ) : lesson.active ? (
-                        <PlayIcon color={iconColor} size={24} />
+                        <CheckIcon size={28} color={iconColor} />
+                      ) : isCurrent ? (
+                        <StarIcon color={iconColor} size={30} />
                       ) : (
                         getCategoryIcon(lesson.category, iconColor, 24)
                       )}
                     </Pressable>
 
                     <View style={styles.nodeLabelBox}>
-                      {lesson.active && !lesson.locked && (
-                        <View style={styles.nextBadge}>
-                          <Text style={styles.nextBadgeText}>NEXT UP</Text>
+                      {isCurrent && (
+                        <View style={styles.startBadge}>
+                          <Text style={styles.startBadgeText}>START</Text>
                         </View>
                       )}
                       <Text
                         style={[
                           styles.nodeTitleText,
-                          lesson.active && styles.nodeTitleTextActive,
+                          isCurrent && styles.nodeTitleTextActive,
                           lesson.locked && styles.nodeTitleTextLocked,
                         ]}
                         numberOfLines={1}
@@ -981,7 +955,6 @@ export default function Lessons() {
                 </View>
               </View>
 
-              {/* Attempt History Button - Only show if lesson has a quiz */}
               {selectedLesson.has_quiz && (
                 <Pressable
                   style={styles.attemptHistoryBtn}
@@ -1006,11 +979,7 @@ export default function Lessons() {
                 disabled={selectedLesson.locked}
               >
                 <Text style={styles.cardActionBtnText}>
-                  {selectedLesson.locked
-                    ? "🔒 LOCKED"
-                    : selectedLesson.done
-                      ? "🔄 REVIEW LESSON"
-                      : "🚀 START LESSON"}
+                  {selectedLesson.locked ? "🔒 LOCKED" : selectedLesson.done ? "🔄 REVIEW LESSON" : "🚀 START LESSON"}
                 </Text>
               </Pressable>
             </View>
@@ -1023,33 +992,16 @@ export default function Lessons() {
 
 // ── STYLES ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  container: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  sunContainer: {
+  safeArea: { flex: 1, backgroundColor: '#0d326b' },
+  container: { flex: 1, backgroundColor: 'transparent' },
+  cloudLayer: {
     position: 'absolute',
-    top: 60,
-    right: -20,
-    zIndex: 0,
-  },
-  floatingSky: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 0,
+    top: 0, left: 0, right: 0,
+    height: screenHeight * 0.4,
     overflow: 'hidden',
+    zIndex: 0,
   },
-  cloudWrapper: {
-    position: 'absolute',
-    left: 0,
-  },
+
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1059,165 +1011,94 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     zIndex: 5,
   },
-  logoText: {
-    color: '#0f3172',
-    fontSize: 24,
-    fontWeight: '900',
-    letterSpacing: 2,
-  },
-  topBarRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  logoText: { color: '#fff', fontSize: 24, fontWeight: '900', letterSpacing: 2 },
+  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   xpTopBadge: {
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderWidth: 1.5,
-    borderColor: '#93C5FD',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     borderRadius: 20,
     paddingVertical: 5,
     paddingHorizontal: 12,
   },
-  xpTopText: {
-    color: '#1E40AF',
-    fontSize: 13,
-    fontWeight: '700',
-  },
+  xpTopText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   streakBadge: {
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    borderWidth: 1.5,
-    borderColor: '#FDE68A',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     borderRadius: 20,
     paddingVertical: 5,
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
   },
-  streakText: {
-    color: '#0f3172',
-    fontSize: 13,
-    fontWeight: '700',
-  },
+  streakText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
   unitBanner: {
     marginHorizontal: 16,
     marginTop: 8,
     marginBottom: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 24,
     padding: 16,
-    shadowColor: '#0f3172',
+    shadowColor: '#0d326b',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.2,
     shadowRadius: 16,
     elevation: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
     zIndex: 5,
   },
-  bannerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  bannerTitleContainer: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 12,
-  },
-  unitTitle: {
-    color: '#0f3172',
-    fontSize: 20,
-    fontWeight: '900',
-    textAlign: 'center',
-    marginBottom: 2,
-  },
-  unitDesc: {
-    color: '#64748B',
-    fontSize: 11,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
+  bannerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  bannerTitleContainer: { flex: 1, alignItems: 'center', paddingHorizontal: 12 },
+  unitTitle: { color: '#0f3172', fontSize: 20, fontWeight: '900', textAlign: 'center', marginBottom: 2 },
+  unitDesc: { color: '#64748B', fontSize: 11, textAlign: 'center', fontWeight: '500' },
   arrowButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 38, height: 38, borderRadius: 19,
     backgroundColor: '#2563EB',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
     shadowColor: '#2563EB',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
     elevation: 3,
   },
-  arrowButtonDisabled: {
-    backgroundColor: '#E2E8F0',
-    shadowOpacity: 0,
-    elevation: 0,
-  },
+  arrowButtonDisabled: { backgroundColor: '#E2E8F0', shadowOpacity: 0, elevation: 0 },
 
-  // Module Dots
-  moduleDotsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 4,
-  },
-  moduleDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#CBD5E1',
-  },
-  moduleDotActive: {
-    backgroundColor: '#2563EB',
-    width: 16,
-  },
+  moduleDotsContainer: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 4 },
+  moduleDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#CBD5E1' },
+  moduleDotActive: { backgroundColor: '#2563EB', width: 16 },
 
-  progressSection: {
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
-  },
-  progressTrack: {
-    backgroundColor: '#E2E8F0',
-    borderRadius: 12,
-    height: 10,
-    overflow: 'hidden',
-  },
+  progressSection: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
+  progressTrack: { backgroundColor: '#E2E8F0', borderRadius: 12, height: 10, overflow: 'hidden' },
   progressFill: {
-    height: '100%',
-    backgroundColor: '#FCD34D',
-    borderRadius: 12,
-    shadowColor: '#FCD34D',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    height: '100%', backgroundColor: '#FCD34D', borderRadius: 12,
+    shadowColor: '#FCD34D', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 6,
   },
-  progressTextRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 6,
-  },
-  progressText: {
-    color: '#64748B',
-    fontSize: 11,
-    fontWeight: '600',
-  },
+  progressTextRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
+  progressText: { color: '#64748B', fontSize: 11, fontWeight: '600' },
 
-  mapContainer: {
-    flex: 1,
-    marginTop: 10,
-    zIndex: 2,
+  mapContainer: { flex: 1, marginTop: 10, zIndex: 2 },
+
+  startMarker: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 3 },
+  startFlag: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 99,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderWidth: 2,
+    borderColor: '#FBBF24',
   },
+  startFlagText: { fontSize: 12, fontWeight: '900', color: '#0f3172', letterSpacing: 0.5 },
+
+  finishMarker: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 3 },
+  finishBadge: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 3, borderColor: '#FBBF24',
+    marginBottom: 4,
+    shadowColor: '#FBBF24', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 10,
+  },
+  finishBadgeText: { fontSize: 26 },
+  finishLabel: { fontSize: 11, fontWeight: '900', color: '#fff', letterSpacing: 1.5 },
+
   nodeAbsoluteContainer: {
     position: 'absolute',
     width: NODE_RADIUS * 2,
@@ -1226,6 +1107,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 10,
   },
+  platform: {
+    position: 'absolute',
+    bottom: -6,
+    width: NODE_RADIUS * 2.3,
+    height: NODE_RADIUS * 0.9,
+    borderRadius: 999,
+  },
   nodeCircle: {
     width: NODE_RADIUS * 2,
     height: NODE_RADIUS * 2,
@@ -1233,10 +1121,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 4,
-    borderColor: 'rgba(255,255,255,0.9)',
+    borderColor: 'rgba(255,255,255,0.95)',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
     elevation: 6,
   },
   pulseRing: {
@@ -1252,216 +1140,81 @@ const styles = StyleSheet.create({
     width: 140,
     alignItems: 'center',
   },
-  nextBadge: {
-    backgroundColor: '#F59E0B',
-    borderRadius: 8,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
+  startBadge: {
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    paddingVertical: 3,
+    paddingHorizontal: 12,
     marginBottom: 4,
-    shadowColor: '#F59E0B',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
   },
-  nextBadgeText: {
-    fontSize: 8.5,
-    fontWeight: '900',
-    color: '#fff',
-    letterSpacing: 0.5,
-  },
-  nodeTitleText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#1E293B',
-    textAlign: 'center',
-  },
-  nodeTitleTextActive: {
-    color: '#0f3172',
-    fontWeight: '900',
-  },
-  nodeTitleTextLocked: {
-    color: '#94A3B8',
-  },
+  startBadgeText: { fontSize: 11, fontWeight: '900', color: '#1CB0F6', letterSpacing: 0.5 },
+  nodeTitleText: { fontSize: 12, fontWeight: '800', color: '#fff', textAlign: 'center' },
+  nodeTitleTextActive: { color: '#fff', fontWeight: '900' },
+  nodeTitleTextLocked: { color: 'rgba(255,255,255,0.5)' },
 
-  loaderContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 120,
-  },
-  loaderText: {
-    marginTop: 12,
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748B',
-  },
+  loaderContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 120 },
+  loaderText: { marginTop: 12, fontSize: 14, fontWeight: '600', color: '#fff' },
 
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
-    paddingVertical: 100,
-  },
+  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, paddingVertical: 100 },
   emptyIllustrationBox: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(226, 232, 240, 0.8)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 100, height: 100, borderRadius: 50,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center', justifyContent: 'center',
     marginBottom: 20,
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.8)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
   },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#0f3172',
-    marginBottom: 8,
-  },
-  emptySubText: {
-    fontSize: 13,
-    color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 24,
-  },
+  emptyTitle: { fontSize: 20, fontWeight: '900', color: '#fff', marginBottom: 8 },
+  emptySubText: { fontSize: 13, color: 'rgba(255,255,255,0.75)', textAlign: 'center', lineHeight: 18, marginBottom: 24 },
   emptyRefreshBtn: {
-    backgroundColor: '#2563EB',
+    backgroundColor: '#fbbf24',
     paddingVertical: 10,
     paddingHorizontal: 28,
     borderRadius: 20,
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 3,
   },
-  emptyRefreshBtnText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 14,
-  },
+  emptyRefreshBtnText: { color: '#78350f', fontWeight: '800', fontSize: 14 },
 
-  mascotContainer: {
-    position: 'absolute',
-    alignItems: 'center',
-    zIndex: 12,
-    width: 85,
-  },
-  mascotImage: {
-    width: 60,
-    height: 60,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
+  mascotContainer: { position: 'absolute', alignItems: 'center', zIndex: 12, width: 85 },
+  mascotImage: { width: 60, height: 60 },
   mascotBubble: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: 'rgba(255,255,255,0.97)',
     borderRadius: 12,
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderWidth: 2,
     borderColor: '#2563EB',
     marginTop: 2,
-    shadowColor: '#0f3172',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  mascotBubbleText: {
-    fontSize: 9,
-    fontWeight: '900',
-    color: '#2563EB',
-    textAlign: 'center',
-  },
+  mascotBubbleText: { fontSize: 9, fontWeight: '900', color: '#2563EB', textAlign: 'center' },
 
-  overlayContainer: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    zIndex: 999,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 49, 114, 0.12)',
-  },
+  overlayContainer: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', alignItems: 'center', zIndex: 999 },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(13, 50, 107, 0.4)' },
   bottomCard: {
     width: screenWidth - 32,
     backgroundColor: 'rgba(255,255,255,0.98)',
     borderRadius: 24,
     padding: 20,
     marginBottom: 24,
-    shadowColor: '#0f3172',
+    shadowColor: '#0d326b',
     shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.2,
     shadowRadius: 20,
     elevation: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  cardIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardHeaderMeta: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  cardCategoryText: {
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-  cardTitleText: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#0f3172',
-    marginTop: 1,
-  },
-  closeCardBtn: {
-    padding: 6,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 12,
-  },
-  cardDescText: {
-    fontSize: 13,
-    color: '#64748B',
-    lineHeight: 18,
-    marginBottom: 16,
-  },
-  cardInfoRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 20,
-  },
-  cardInfoBadge: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 12,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-  },
-  cardInfoBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#475569',
-  },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  cardIconContainer: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  cardHeaderMeta: { flex: 1, marginLeft: 12 },
+  cardCategoryText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
+  cardTitleText: { fontSize: 18, fontWeight: '900', color: '#0f3172', marginTop: 1 },
+  closeCardBtn: { padding: 6, backgroundColor: '#F1F5F9', borderRadius: 12 },
+  cardDescText: { fontSize: 13, color: '#64748B', lineHeight: 18, marginBottom: 16 },
+  cardInfoRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
+  cardInfoBadge: { backgroundColor: '#F1F5F9', borderRadius: 12, paddingVertical: 5, paddingHorizontal: 12 },
+  cardInfoBadgeText: { fontSize: 11, fontWeight: '700', color: '#475569' },
   cardActionBtn: {
     borderRadius: 16,
     paddingVertical: 14,
@@ -1472,12 +1225,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  cardActionBtnText: {
-    color: '#fff',
-    fontWeight: '900',
-    fontSize: 14,
-    letterSpacing: 0.5,
-  },
+  cardActionBtnText: { color: '#fff', fontWeight: '900', fontSize: 14, letterSpacing: 0.5 },
   attemptHistoryBtn: {
     backgroundColor: '#EFF6FF',
     borderWidth: 1.5,
@@ -1488,9 +1236,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 10,
   },
-  attemptHistoryBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#2563EB',
-  },
+  attemptHistoryBtnText: { fontSize: 13, fontWeight: '700', color: '#2563EB' },
 });
