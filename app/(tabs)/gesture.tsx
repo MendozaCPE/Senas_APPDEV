@@ -1,24 +1,23 @@
 // app/(tabs)/gesture.tsx
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
-  Pressable,
-  ScrollView,
-  Dimensions,
-  FlatList,
-  TouchableOpacity,
-  Animated,
-  RefreshControl,
-  ActivityIndicator,
-} from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
-import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  FlatList,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import { api } from '../../services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -91,10 +90,10 @@ const DEFAULT_MODULES = [
     description: 'Learn greetings and phrases',
     progress: 0,
     xp: 40,
-    locked: true,
-    route: '/gesture/greetings',
+    locked: false,
+    route: '/gesture/webview-greetings', // ← UPDATE ROUTE
     image: require('../../assets/images/img/greetings.png'),
-    lessons: 8,
+    lessons: 5,
     isCompleted: false,
     display_name: 'Basic Greetings',
   },

@@ -1,32 +1,31 @@
-import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  Pressable,
-  Dimensions,
-  Animated,
-  ActivityIndicator,
-  Easing,
-  StatusBar,
-  Platform
-} from 'react-native';
-import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
-import Svg, { Path, Circle, Rect, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
-import { api } from '../../services/api';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  CheckIcon,
-  LockIcon,
-  StarIcon,
-  BookIcon,
-  NumbersIcon,
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Easing,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View
+} from 'react-native';
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
+import {
   AlphabetIcon,
+  BookIcon,
+  CheckIcon,
+  FlameIcon,
   GreetingIcon,
-  FlameIcon
+  LockIcon,
+  NumbersIcon
 } from '../../components/ui/icons';
+import { api } from '../../services/api';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
