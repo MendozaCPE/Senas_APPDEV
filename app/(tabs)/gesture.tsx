@@ -2,273 +2,205 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
-  Dimensions,
-  FlatList,
+  Platform,
+  Pressable,
   RefreshControl,
   SafeAreaView,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
-  TouchableOpacity,
-  View
+  View,
 } from 'react-native';
+import Svg, { Path, Rect } from 'react-native-svg';
 import { api } from '../../services/api';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+// ── Icons ──────────────────────────────────────────────────────────────
+function LockIcon({ size = 18, color = '#94A3B8' }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
+      <Rect x="3" y="11" width="18" height="11" rx="2" />
+      <Path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </Svg>
+  );
+}
+function CheckIcon({ size = 18, color = '#fff' }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M20 6 9 17 4 12" />
+    </Svg>
+  );
+}
 
-const CARD_WIDTH = SCREEN_WIDTH * 0.76;
-const CARD_MARGIN = 10;
-const SNAP_INTERVAL = CARD_WIDTH + CARD_MARGIN * 2;
-const SIDE_OFFSET = (SCREEN_WIDTH - CARD_WIDTH - CARD_MARGIN * 2) / 2;
-
-// Default module data (will be replaced by API data)
-const DEFAULT_MODULES = [
-  {
-    id: 'alphabet_part1',
-    title: 'Alphabet Part 1',
-    subtitle: 'A-M',
-    category: 'alphabet',
-    color: ['#FF6B6B', '#FF8E8E'] as const,
-    icon: 'book',
-    description: 'Learn letters A through M',
-    progress: 0,
-    xp: 40,
-    locked: false,
-    route: '/gesture/webview-camera',
-    image: require('../../assets/images/img/alphabet.png'),
-    lessons: 13,
-    isCompleted: false,
-    display_name: 'Alphabet Part 1 (A-M)',
-  },
-  {
-    id: 'alphabet_part2',
-    title: 'Alphabet Part 2',
-    subtitle: 'N-Z',
-    category: 'alphabet',
-    color: ['#4ECDC4', '#45B7AA'] as const,
-    icon: 'ribbon',
-    description: 'Learn letters N through Z',
-    progress: 0,
-    xp: 40,
-    locked: false,
-    route: '/gesture/alphabet2',
-    image: require('../../assets/images/img/alphabet_star.png'),
-    lessons: 13,
-    isCompleted: false,
-    display_name: 'Alphabet Part 2 (N-Z)',
-  },
-  {
-    id: 'fingerspelling',
-    title: 'Fingerspelling',
-    subtitle: 'Practice spelling words',
-    category: 'practice',
-    color: ['#A8E6CF', '#88D8B0'] as const,
-    icon: 'hand-left',
-    description: 'Spell words using signs',
-    progress: 0,
-    xp: 40,
-    locked: true,
-    route: '/gesture/fingerspelling',
-    image: require('../../assets/images/img/senya_magnify.png'),
-    lessons: 10,
-    isCompleted: false,
-    display_name: 'Fingerspelling',
-  },
-  {
-    id: 'greetings',
-    title: 'Basic Greetings',
-    subtitle: 'Everyday Signs & Phrases',
-    category: 'greetings',
-    color: ['#FFB6C1', '#FF8E9E'] as const,
-    icon: 'chatbubble-ellipses',
-    description: 'Learn greetings and phrases',
-    progress: 0,
-    xp: 40,
-    locked: false,
-    route: '/gesture/webview-greetings', // ← UPDATE ROUTE
-    image: require('../../assets/images/img/greetings.png'),
-    lessons: 5,
-    isCompleted: false,
-    display_name: 'Basic Greetings',
-  },
-];
-
-// Categories configuration
-const CATEGORIES = [
-  { id: 'all', title: 'All', icon: 'grid-outline' },
-  { id: 'alphabet', title: 'Alphabet', icon: 'text-outline' },
-  { id: 'practice', title: 'Practice', icon: 'hand-left-outline' },
-  { id: 'greetings', title: 'Greetings', icon: 'chatbubbles-outline' },
-];
-
-// Individual module card component
-function ModuleCard({
-  module,
-  onPress,
-  isActive,
-}: {
-  module: any;
-  onPress: () => void;
-  isActive: boolean;
-}) {
-  const scale = useRef(new Animated.Value(0.92)).current;
-  const opacity = useRef(new Animated.Value(0.7)).current;
-
-  React.useEffect(() => {
-    Animated.parallel([
-      Animated.spring(scale, {
-        toValue: isActive ? 1.0 : 0.92,
-        useNativeDriver: true,
-        friction: 8,
-        tension: 40,
-      }),
-      Animated.timing(opacity, {
-        toValue: isActive ? 1.0 : 0.7,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [isActive]);
+// ── Module card — pastel background, big image, "Choose" pill (per reference) ──
+function ModuleCard({ module, onPress }: { module: any; onPress: () => void }) {
+  const isLocked = module.locked;
+  const isCompleted = module.isCompleted;
+  const progress = module.progress || 0;
+  const [colorA] = module.color || ['#2563EB', '#3B82F6'];
 
   return (
-    <Animated.View
-      style={[
-        styles.cardContainer,
-        {
-          transform: [{ scale }],
-          opacity,
-        },
+    <Pressable
+      onPress={onPress}
+      disabled={isLocked}
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: isLocked ? '#F1F5F9' : `${colorA}30`, opacity: pressed ? 0.94 : 1 },
       ]}
     >
-      <TouchableOpacity
-        onPress={onPress}
-        activeOpacity={0.9}
-        style={styles.cardTouchable}
-        disabled={module.locked}
-      >
-        <LinearGradient
-          colors={module.color}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.cardGradient}
-        >
-          <View style={styles.cardImageContainer}>
-            <Image
-              source={module.image}
-              style={styles.cardImage}
-              contentFit="cover"
-            />
-            <View style={styles.cardFloatingHeader}>
-              <View style={styles.cardIconBadge}>
-                <Ionicons name={module.icon as any} size={20} color="#FFF" />
-              </View>
-              {module.isCompleted && (
-                <View style={[styles.cardProgressBadge, { backgroundColor: '#10B981' }]}>
-                  <Ionicons name="checkmark-circle" size={12} color="#FFF" />
-                  <Text style={styles.cardProgressBadgeText}>Complete!</Text>
-                </View>
-              )}
-              {!module.isCompleted && module.progress > 0 && (
-                <View style={styles.cardProgressBadge}>
-                  <Text style={styles.cardProgressBadgeText}>{module.progress}% Done</Text>
-                </View>
-              )}
-            </View>
-          </View>
+      {/* decorative bubbles — kiddie background motif */}
+      {!isLocked && (
+        <>
+          <View style={[styles.bubble, { width: 90, height: 90, top: -30, right: 30, backgroundColor: `${colorA}22` }]} />
+          <View style={[styles.bubble, { width: 50, height: 50, top: 60, right: -14, backgroundColor: `${colorA}2E` }]} />
+          <View style={[styles.bubble, { width: 34, height: 34, bottom: 54, right: 90, backgroundColor: `${colorA}20` }]} />
+          <View style={[styles.bubble, { width: 22, height: 22, top: 20, left: '58%', backgroundColor: '#ffffff55' }]} />
+          <View style={[styles.bubble, { width: 130, height: 130, bottom: -55, left: -40, backgroundColor: `${colorA}18` }]} />
+        </>
+      )}
 
-          <View style={styles.cardOverlayDetails}>
-            <View style={styles.cardHeaderInfo}>
-              <Ionicons name="book-outline" size={14} color="#6B7280" style={{ marginRight: 4 }} />
-              <Text style={styles.cardInfoText}>{module.lessons} Lessons</Text>
-              <Text style={styles.cardInfoDivider}>•</Text>
-              <Ionicons name="star" size={14} color="#F59E0B" style={{ marginRight: 4 }} />
-              <Text style={styles.cardInfoText}>{module.xp} XP</Text>
-            </View>
+      {/* top-right corner badge */}
+      <View style={[styles.cornerBadge, { backgroundColor: isLocked ? '#E2E8F0' : '#fff' }]}>
+        {isLocked ? (
+          <LockIcon size={15} color="#94A3B8" />
+        ) : isCompleted ? (
+          <CheckIcon size={15} color="#10B981" />
+        ) : (
+          <>
+            <Ionicons name="star" size={12} color="#F59E0B" />
+            <Text style={styles.cornerBadgeText}>{module.xp}</Text>
+          </>
+        )}
+      </View>
 
-            <Text style={styles.cardMainTitle} numberOfLines={1}>{module.title}</Text>
-            <Text style={styles.cardDescription} numberOfLines={1}>{module.description}</Text>
+      {/* text block, top-left */}
+      <View style={styles.cardTextBlock}>
+        <Text style={[styles.cardCategoryLabel, { color: isLocked ? '#94A3B8' : colorA }]} numberOfLines={1}>
+          {module.categoryLabel?.toUpperCase()}
+        </Text>
+        <Text numberOfLines={2} style={[styles.cardTitle, isLocked && styles.cardTitleLocked]}>
+          {module.display_name || module.title}
+        </Text>
+        <Text numberOfLines={2} style={styles.cardSubtitle}>
+          {isLocked ? 'Complete the previous module to unlock' : `${module.lessons} signs to learn · ${progress}% done`}
+        </Text>
+      </View>
 
-            <View style={styles.cardFooterRow}>
-              {module.locked ? (
-                <View style={styles.lockedRow}>
-                  <Ionicons name="lock-closed" size={16} color="#EF4444" style={{ marginRight: 4 }} />
-                  <Text style={styles.lockedText}>Locked</Text>
-                </View>
-              ) : (
-                <View style={styles.progressBarWrapper}>
-                  <View style={styles.progressBarTrack}>
-                    <View
-                      style={[
-                        styles.progressBarFill,
-                        { width: `${Math.min(module.progress, 100)}%`, backgroundColor: module.color[0] }
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.progressPctText}>{module.progress}% Complete</Text>
-                </View>
-              )}
+      {/* pill button, bottom-left */}
+      <View style={styles.cardBottomRow}>
+        <View style={[styles.chooseBtn, isLocked && styles.chooseBtnLocked]}>
+          <Text style={[styles.chooseBtnText, isLocked && styles.chooseBtnTextLocked]}>
+            {isLocked ? 'Locked' : isCompleted ? 'Review' : 'Start'}
+          </Text>
+        </View>
+      </View>
 
-              {!module.locked && module.progress < 100 && (
-                <View style={[styles.playIndicatorButton, { backgroundColor: module.color[0] }]}>
-                  <Ionicons name="play" size={14} color="#FFF" />
-                </View>
-              )}
-              {module.isCompleted && (
-                <View style={[styles.playIndicatorButton, { backgroundColor: '#10B981' }]}>
-                  <Ionicons name="checkmark" size={14} color="#FFF" />
-                </View>
-              )}
-            </View>
-          </View>
-
-          {module.locked && (
-            <View style={styles.lockedCardOverlay}>
-              <View style={styles.lockedIconCircle}>
-                <Ionicons name="lock-closed" size={26} color="#0F3172" />
-              </View>
-              <Text style={styles.lockedOverlayText}>Complete previous modules to unlock!</Text>
-            </View>
-          )}
-        </LinearGradient>
-      </TouchableOpacity>
-    </Animated.View>
+      {/* big illustration, bottom-right, fills the card */}
+      <View style={styles.cardIllustrationWrap} pointerEvents="none">
+        {module.image && (
+          <Image
+            source={module.image}
+            style={[styles.cardIllustration, isLocked && { opacity: 0.4 }]}
+            contentFit="contain"
+          />
+        )}
+      </View>
+    </Pressable>
   );
 }
 
-// Carousel dots
-function CarouselDots({ currentIndex, total }: { currentIndex: number; total: number }) {
+// ── Pill filter row (matches "All / New / Coloring / Art & Craft") ────
+function PillFilter({ categories, active, onChange }: {
+  categories: { id: string; title: string; icon: string }[]; active: string; onChange: (id: string) => void;
+}) {
   return (
-    <View style={styles.dotsContainer}>
-      {Array.from({ length: total }).map((_, index) => (
-        <View
-          key={index}
-          style={[
-            styles.dot,
-            currentIndex === index && styles.dotActive,
-          ]}
-        />
-      ))}
-    </View>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.pillScroll}
+      style={styles.pillScrollOuter}
+    >
+      {categories.map((cat) => {
+        const isActive = active === cat.id;
+        return (
+          <Pressable
+            key={cat.id}
+            onPress={() => onChange(cat.id)}
+            style={[styles.pill, isActive && styles.pillActive]}
+          >
+            <Ionicons
+              name={cat.icon as any}
+              size={14}
+              color={isActive ? '#fff' : '#64748B'}
+              style={{ marginRight: 6 }}
+            />
+            <Text numberOfLines={1} style={[styles.pillText, isActive && styles.pillTextActive]}>{cat.title}</Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
   );
 }
+
+// ── Default Modules ────────────────────────────────────────────────────
+const DEFAULT_MODULES = [
+  {
+    id: 'alphabet_part1', title: 'Alphabet Part 1', display_name: 'Alphabet Part 1 (A-M)',
+    category: 'alphabet', categoryLabel: 'Alphabet', color: ['#2563EB', '#3B82F6'] as const,
+    description: 'Learn letters A through M', progress: 0, xp: 40, locked: false,
+    route: '/gesture/webview-camera', image: require('../../assets/images/img/alphabet.png'),
+    lessons: 13, isCompleted: false,
+  },
+  {
+    id: 'alphabet_part2', title: 'Alphabet Part 2', display_name: 'Alphabet Part 2 (N-Z)',
+    category: 'alphabet', categoryLabel: 'Alphabet', color: ['#8B5CF6', '#A78BFA'] as const,
+    description: 'Learn letters N through Z', progress: 0, xp: 40, locked: false,
+    route: '/gesture/alphabet2', image: require('../../assets/images/img/alphabet_star.png'),
+    lessons: 13, isCompleted: false,
+  },
+  {
+    id: 'fingerspelling', title: 'Fingerspelling', display_name: 'Fingerspelling',
+    category: 'practice', categoryLabel: 'Practice', color: ['#10B981', '#34D399'] as const,
+    description: 'Spell words using signs', progress: 0, xp: 40, locked: true,
+    route: '/gesture/fingerspelling', image: require('../../assets/images/img/senya_magnify.png'),
+    lessons: 10, isCompleted: false,
+  },
+  {
+    id: 'greetings', title: 'Basic Greetings', display_name: 'Basic Greetings',
+    category: 'greetings', categoryLabel: 'Greetings', color: ['#EC4899', '#F472B6'] as const,
+    description: 'Learn greetings and phrases', progress: 0, xp: 40, locked: false,
+    route: '/gesture/webview-greetings', image: require('../../assets/images/img/greetings.png'),
+    lessons: 5, isCompleted: false,
+  },
+  {
+    id: 'numbers', title: 'Numbers 1-10', display_name: 'Numbers 1-10',
+    category: 'numbers', categoryLabel: 'Numbers', color: ['#F59E0B', '#FBBF24'] as const,
+    description: 'Learn numbers 1 through 10', progress: 0, xp: 30, locked: false,
+    route: '/gesture/numbers', image: require('../../assets/images/img/numbers.png'),
+    lessons: 10, isCompleted: false,
+  },
+];
+
+const CATEGORIES = [
+  { id: 'all', title: 'All', icon: 'apps-outline' },
+  { id: 'alphabet', title: 'Alphabet', icon: 'text-outline' },
+  { id: 'greetings', title: 'Greetings', icon: 'chatbubbles-outline' },
+  { id: 'practice', title: 'Practice', icon: 'hand-left-outline' },
+  { id: 'numbers', title: 'Numbers', icon: 'calculator-outline' },
+];
 
 export default function GestureMain() {
   const router = useRouter();
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [modules, setModules] = useState(DEFAULT_MODULES);
   const [totalXp, setTotalXp] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const flatListRef = useRef<FlatList>(null);
 
-  // Fetch gesture progress from API
   const fetchGestureProgress = async () => {
     try {
       const token = await AsyncStorage.getItem('userToken');
@@ -281,10 +213,8 @@ export default function GestureMain() {
       if (response && response.success) {
         setTotalXp(response.student?.total_xp || 0);
 
-        // Map API data to module format
         const updatedModules = DEFAULT_MODULES.map(defaultModule => {
           const apiModule = response.modules?.find((m: any) => m.name === defaultModule.id);
-
           if (apiModule) {
             return {
               ...defaultModule,
@@ -302,722 +232,172 @@ export default function GestureMain() {
         setModules(updatedModules);
       }
     } catch (error) {
-      console.error('❌ Error fetching gesture progress:', error);
+      console.error('Error fetching gesture progress:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  // Refresh data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       fetchGestureProgress();
     }, [])
   );
 
-  // Manual refresh
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchGestureProgress();
   };
 
   const handleModulePress = (module: any) => {
-    if (module.locked) {
-      return;
-    }
+    if (module.locked) return;
     router.push(module.route as any);
   };
 
-  const handleScroll = (event: any) => {
-    const index = Math.round(event.nativeEvent.contentOffset.x / SNAP_INTERVAL);
-    setCurrentIndex(index);
-  };
-
-  const scrollToIndex = (index: number) => {
-    flatListRef.current?.scrollToIndex({
-      index,
-      animated: true,
-    });
-  };
-
-  // Filter modules based on category
   const filteredModules = selectedCategory === 'all'
     ? modules
     : modules.filter((m) => m.category === selectedCategory);
 
-  // Loading state
   if (loading) {
     return (
-      <LinearGradient
-        colors={['#EAF5FD', '#DDECFB', '#CBE0F8']}
-        style={styles.container}
-      >
-        <SafeAreaView style={styles.safeArea}>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#0F3172" />
-            <Text style={styles.loadingText}>Loading your progress...</Text>
-          </View>
-        </SafeAreaView>
-      </LinearGradient>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2563EB" />
+          <Text style={styles.loadingText}>Loading your progress...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <LinearGradient
-      colors={['#EAF5FD', '#DDECFB', '#CBE0F8']}
-      style={styles.container}
-    >
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.greeting}>Let's Practice</Text>
-              <Text style={styles.title}>Gestures</Text>
-            </View>
-            <View style={styles.headerRight}>
-              <View style={styles.xpBadge}>
-                <Ionicons name="star" size={16} color="#F59E0B" style={{ marginRight: 4 }} />
-                <Text style={styles.xpBadgeText}>{totalXp} XP</Text>
-              </View>
-              <TouchableOpacity style={styles.settingsButton}>
-                <Ionicons name="options-outline" size={22} color="#0F3172" />
-              </TouchableOpacity>
-            </View>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+
+      {/* Top bar — matches dashboard.tsx / lessons.tsx style */}
+      <View style={styles.topBar}>
+        <Text style={styles.logoText}>SEÑAS</Text>
+        <View style={styles.topBarRight}>
+          <View style={styles.xpTopBadge}>
+            <Ionicons name="star" size={13} color="#F59E0B" />
+            <Text style={styles.xpTopBadgeText}>{totalXp}</Text>
           </View>
+        </View>
+      </View>
 
-          {/* Category Filters */}
-          <View style={styles.categoriesContainer}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.categoriesContent}
-            >
-              {CATEGORIES.map((cat) => {
-                const isSelected = selectedCategory === cat.id;
-                return (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[
-                      styles.categoryButton,
-                      isSelected && styles.categoryButtonActive,
-                    ]}
-                    onPress={() => {
-                      setSelectedCategory(cat.id);
-                      setCurrentIndex(0);
-                    }}
-                  >
-                    <Ionicons
-                      name={cat.icon as any}
-                      size={18}
-                      color={isSelected ? '#FFFFFF' : '#4B7BBB'}
-                      style={{ marginRight: 6 }}
-                    />
-                    <Text
-                      style={[
-                        styles.categoryText,
-                        isSelected && styles.categoryTextActive,
-                      ]}
-                    >
-                      {cat.title}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+      {/* Pill filters */}
+      <PillFilter categories={CATEGORIES} active={selectedCategory} onChange={setSelectedCategory} />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {filteredModules.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="search-outline" size={44} color="#94A3B8" />
+            <Text style={styles.emptyTitle}>No modules found</Text>
+            <Text style={styles.emptySubtext}>Try a different category</Text>
           </View>
+        ) : (
+          filteredModules.map((m) => (
+            <ModuleCard key={m.id} module={m} onPress={() => handleModulePress(m)} />
+          ))
+        )}
 
-          {/* Carousel Section */}
-          <View style={styles.carouselSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Featured Modules</Text>
-              {filteredModules.length > 1 && (
-                <View style={styles.carouselNavSimple}>
-                  <TouchableOpacity
-                    style={[styles.arrowButton, currentIndex === 0 && styles.arrowButtonDisabled]}
-                    onPress={() => scrollToIndex(Math.max(0, currentIndex - 1))}
-                    disabled={currentIndex === 0}
-                  >
-                    <Ionicons
-                      name="chevron-back"
-                      size={20}
-                      color={currentIndex === 0 ? 'rgba(15, 49, 114, 0.25)' : '#0F3172'}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.arrowButton,
-                      currentIndex === filteredModules.length - 1 && styles.arrowButtonDisabled,
-                    ]}
-                    onPress={() => scrollToIndex(Math.min(filteredModules.length - 1, currentIndex + 1))}
-                    disabled={currentIndex === filteredModules.length - 1}
-                  >
-                    <Ionicons
-                      name="chevron-forward"
-                      size={20}
-                      color={currentIndex === filteredModules.length - 1 ? 'rgba(15, 49, 114, 0.25)' : '#0F3172'}
-                    />
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-
-            {filteredModules.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="search-outline" size={40} color="#4B7BBB" style={{ marginBottom: 12 }} />
-                <Text style={styles.emptyText}>No modules in this category yet!</Text>
-              </View>
-            ) : (
-              <View style={styles.carouselContainer}>
-                <FlatList
-                  ref={flatListRef}
-                  data={filteredModules}
-                  renderItem={({ item, index }) => (
-                    <ModuleCard
-                      module={item}
-                      onPress={() => handleModulePress(item)}
-                      isActive={currentIndex === index}
-                    />
-                  )}
-                  keyExtractor={(item) => item.id}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  onScroll={handleScroll}
-                  scrollEventThrottle={16}
-                  snapToInterval={SNAP_INTERVAL}
-                  snapToAlignment="center"
-                  decelerationRate="fast"
-                  contentContainerStyle={{ paddingHorizontal: SIDE_OFFSET }}
-                  style={styles.carousel}
-                />
-
-                <CarouselDots currentIndex={currentIndex} total={filteredModules.length} />
-              </View>
-            )}
-          </View>
-
-          {/* Quick Access */}
-          <View style={styles.quickAccess}>
-            <Text style={styles.sectionTitle}>Quick Start</Text>
-            <View style={styles.quickAccessGrid}>
-              {modules
-                .filter(m => !m.locked && m.category === 'alphabet')
-                .slice(0, 2)
-                .map((module) => (
-                  <TouchableOpacity
-                    key={module.id}
-                    style={styles.quickAccessItem}
-                    onPress={() => router.push(module.route as any)}
-                  >
-                    <View style={[styles.quickAccessIconContainer, { backgroundColor: `${module.color[0]}20` }]}>
-                      <Ionicons name={module.icon as any} size={24} color={module.color[0]} />
-                    </View>
-                    <Text style={styles.quickAccessText}>{module.title}</Text>
-                  </TouchableOpacity>
-                ))}
-
-              {modules
-                .filter(m => m.locked)
-                .slice(0, 1)
-                .map((module) => (
-                  <TouchableOpacity
-                    key={module.id}
-                    style={[styles.quickAccessItem, styles.quickAccessItemLocked]}
-                    disabled
-                  >
-                    <View style={[styles.quickAccessIconContainer, { backgroundColor: 'rgba(156, 163, 175, 0.1)' }]}>
-                      <Ionicons name={module.icon as any} size={24} color="#9CA3AF" />
-                    </View>
-                    <Text style={styles.quickAccessText}>{module.title}</Text>
-                    <Ionicons name="lock-closed" size={12} color="#9CA3AF" style={styles.quickAccessLock} />
-                  </TouchableOpacity>
-                ))}
-            </View>
-          </View>
-
-          {/* Senya's Tip */}
-          <View style={styles.tipCard}>
-            <Image
-              source={require('../../assets/images/img/senya_teaching.png')}
-              style={styles.tipImage}
-              contentFit="contain"
-            />
-            <View style={styles.tipContent}>
-              <Text style={styles.tipTitle}>💡 Senya Says</Text>
-              <Text style={styles.tipText}>
-                {modules.some(m => m.isCompleted)
-                  ? "Great job! Keep practicing to master all gestures! 🌟"
-                  : "Complete Alphabet Part 1 to unlock more modules! Practice makes perfect! 🌟"}
-              </Text>
-            </View>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    </LinearGradient>
+        <View style={{ height: 100 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
+// ── STYLES ──────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  safeArea: { flex: 1, backgroundColor: '#fff' },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loadingText: { marginTop: 14, fontSize: 14, fontWeight: '600', color: '#64748B' },
+
+  topBar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 8 : 16, paddingBottom: 10,
   },
-  safeArea: {
-    flex: 1,
+  logoText: { color: '#0f3172', fontSize: 22, fontWeight: '800', letterSpacing: 2 },
+  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  xpTopBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#FEF3C7', paddingHorizontal: 11, paddingVertical: 6, borderRadius: 20,
   },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 40,
+  xpTopBadgeText: { fontSize: 12.5, fontWeight: '800', color: '#92400E' },
+
+  // Pill filters
+  pillScrollOuter: { flexGrow: 0 },
+  pillScroll: { paddingHorizontal: 20, paddingVertical: 8, gap: 10, paddingBottom: 22 },
+  pill: {
+    flexDirection: 'row', alignItems: 'center', flexShrink: 0,
+    minHeight: 50,
+    paddingHorizontal: 16, paddingVertical: 12, borderRadius: 22,
+    backgroundColor: '#fff',
+    borderWidth: 1.5, borderColor: '#EEF2F7',
+    shadowColor: '#0f3172', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 1,
   },
-  loadingText: {
-    fontSize: 16,
-    color: '#4B7BBB',
-    marginTop: 16,
-    fontWeight: '600',
+  pillActive: {
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
+    shadowColor: '#2563EB', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.28, shadowRadius: 10, elevation: 4,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  greeting: {
-    fontSize: 14,
-    color: '#4B7BBB',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#0F3172',
-    marginTop: 2,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  xpBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(15, 49, 114, 0.15)',
-    shadowColor: '#0F3172',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  xpBadgeText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#0F3172',
-  },
-  settingsButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(15, 49, 114, 0.15)',
-    shadowColor: '#0F3172',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  categoriesContainer: {
-    marginVertical: 12,
-  },
-  categoriesContent: {
-    paddingHorizontal: 20,
-    gap: 10,
-  },
-  categoryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(15, 49, 114, 0.12)',
-    shadowColor: '#0F3172',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  categoryButtonActive: {
-    backgroundColor: '#0F3172',
-    borderColor: '#0F3172',
-    shadowColor: '#0F3172',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  categoryText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4B7BBB',
-  },
-  categoryTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  carouselSection: {
-    marginVertical: 12,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#0F3172',
-  },
-  carouselNavSimple: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  arrowButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(15, 49, 114, 0.12)',
-    shadowColor: '#0F3172',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  arrowButtonDisabled: {
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    borderColor: 'rgba(15, 49, 114, 0.06)',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-    marginHorizontal: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(15, 49, 114, 0.08)',
-  },
-  emptyText: {
-    color: '#4B7BBB',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  carouselContainer: {
-    position: 'relative',
-  },
-  carousel: {
-    height: 360,
-  },
-  cardContainer: {
-    width: CARD_WIDTH,
-    height: 340,
-    marginHorizontal: CARD_MARGIN,
-    borderRadius: 24,
-    shadowColor: '#0F3172',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  cardTouchable: {
-    flex: 1,
-  },
-  cardGradient: {
-    flex: 1,
-    borderRadius: 24,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  cardImageContainer: {
-    height: 180,
-    position: 'relative',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  cardImage: {
+  pillText: { fontSize: 13, fontWeight: '700', color: '#64748B', lineHeight: 22, textAlignVertical: 'center' },
+  pillTextActive: { color: '#fff' },
+
+  scrollContent: { paddingHorizontal: 20 },
+
+  // Card — pastel background, near-square, image filling bottom-right (per reference)
+  card: {
     width: '100%',
-    height: '100%',
-  },
-  cardFloatingHeader: {
-    position: 'absolute',
-    top: 14,
-    left: 14,
-    right: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardIconBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  cardProgressBadge: {
-    backgroundColor: '#10B981',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardProgressBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#FFF',
-  },
-  cardOverlayDetails: {
-    position: 'absolute',
-    bottom: 12,
-    left: 12,
-    right: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 14,
-    shadowColor: '#0F3172',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  cardHeaderInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  cardInfoText: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  cardInfoDivider: {
-    marginHorizontal: 6,
-    color: '#D1D5DB',
-  },
-  cardMainTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F3172',
-    marginBottom: 2,
-  },
-  cardDescription: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  cardFooterRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  progressBarWrapper: {
-    flex: 1,
-    marginRight: 10,
-  },
-  progressBarTrack: {
-    height: 6,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  progressPctText: {
-    fontSize: 10,
-    color: '#9CA3AF',
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  playIndicatorButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  lockedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  lockedText: {
-    fontSize: 12,
-    color: '#EF4444',
-    fontWeight: '700',
-  },
-  lockedCardOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  lockedIconCircle: {
-    width: 52,
-    height: 52,
+    aspectRatio: 1.05,
     borderRadius: 26,
-    backgroundColor: 'rgba(15, 49, 114, 0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(15, 49, 114, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  lockedOverlayText: {
-    color: '#4B7BBB',
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  dotsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 10,
-    gap: 6,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(15, 49, 114, 0.2)',
-  },
-  dotActive: {
-    backgroundColor: '#0F3172',
-    width: 18,
-  },
-  quickAccess: {
-    marginTop: 12,
-    paddingHorizontal: 20,
-    marginBottom: 12,
-  },
-  quickAccessGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  quickAccessItem: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 16,
-    borderRadius: 20,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(15, 49, 114, 0.1)',
+    marginBottom: 18,
+    padding: 18,
+    overflow: 'hidden',
     position: 'relative',
-    shadowColor: '#0F3172',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
   },
-  quickAccessItemLocked: {
-    backgroundColor: 'rgba(255, 255, 255, 0.65)',
-    borderColor: 'rgba(15, 49, 114, 0.06)',
-    opacity: 0.7,
+
+  cornerBadge: {
+    position: 'absolute', top: 16, right: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: 6, paddingHorizontal: 10, borderRadius: 20,
+    shadowColor: '#0f3172', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2,
   },
-  quickAccessIconContainer: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  quickAccessText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0F3172',
-  },
-  quickAccessLock: {
+  cornerBadgeText: { fontSize: 11.5, fontWeight: '800', color: '#92400E' },
+
+  bubble: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    borderRadius: 999,
   },
-  tipCard: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 20,
-    marginVertical: 16,
-    padding: 16,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(15, 49, 114, 0.1)',
-    alignItems: 'center',
-    gap: 14,
-    marginBottom: 30,
-    shadowColor: '#0F3172',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+
+  cardTextBlock: { maxWidth: '62%' },
+  cardCategoryLabel: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.8, marginBottom: 6 },
+  cardTitle: { fontSize: 18, fontWeight: '900', color: '#0f3172', marginBottom: 6, lineHeight: 23 },
+  cardTitleLocked: { color: '#94A3B8' },
+  cardSubtitle: { fontSize: 12, color: '#64748B', fontWeight: '500', lineHeight: 17 },
+
+  cardBottomRow: { position: 'absolute', left: 18, bottom: 18 },
+  chooseBtn: {
+    backgroundColor: '#fff', borderRadius: 16,
+    paddingVertical: 10, paddingHorizontal: 20,
+    shadowColor: '#0f3172', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.10, shadowRadius: 8, elevation: 2,
   },
-  tipImage: {
-    width: 56,
-    height: 56,
+  chooseBtnLocked: { backgroundColor: '#E2E8F0' },
+  chooseBtnText: { fontSize: 13, fontWeight: '800', color: '#0f3172' },
+  chooseBtnTextLocked: { color: '#94A3B8' },
+
+  cardIllustrationWrap: {
+    position: 'absolute', right: -10, bottom: -10,
+    width: '58%', height: '68%',
+    alignItems: 'flex-end', justifyContent: 'flex-end',
   },
-  tipContent: {
-    flex: 1,
-  },
-  tipTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#D97706',
-    marginBottom: 4,
-  },
-  tipText: {
-    fontSize: 12,
-    color: '#4B7BBB',
-    fontWeight: '600',
-    lineHeight: 18,
-  },
+  cardIllustration: { width: '100%', height: '100%' },
+
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  emptyTitle: { fontSize: 15, fontWeight: '700', color: '#0f3172', marginTop: 12 },
+  emptySubtext: { fontSize: 12.5, color: '#94A3B8', marginTop: 4 },
 });
