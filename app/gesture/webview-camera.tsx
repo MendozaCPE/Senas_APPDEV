@@ -20,19 +20,38 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    UIManager,
     View
 } from 'react-native';
+import Svg, { Path, Polyline } from 'react-native-svg';
 import WebView from 'react-native-webview';
 import { api } from '../../services/api';
 
+const { width, height } = Dimensions.get('window');
 
-// Enable LayoutAnimation for Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
+// ─── SVG Icons ──────────────────────────────────────────────────────────
+function FlameIcon({ size = 16, color = "#fbbf24" }) {
+    return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+            <Path d="M12 2c0 6-8 8-8 14a8 8 0 0016 0C20 10 12 8 12 2z" />
+        </Svg>
+    );
 }
 
-const { width, height } = Dimensions.get('window');
+function StarIcon({ size = 16, color = "#F59E0B" }) {
+    return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+            <Path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+        </Svg>
+    );
+}
+
+function CheckIcon({ size = 16, color = "#fff" }) {
+    return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <Polyline points="20 6 9 17 4 12" />
+        </Svg>
+    );
+}
 
 // ─── SOUND EFFECTS ──────────────────────────────────────────────────────────
 const CORRECT_GESTURE_SOUND = require('../../assets/music/correct-gesture.mp3');
@@ -41,27 +60,26 @@ const GESTURE_COMPLETE_SOUND = require('../../assets/music/gesture-complete.mp3'
 // Alphabet Part 1: A-M
 const ALPHABET_PART1 = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
 
-// Senya's encouragement messages (without emojis)
+// Senya's encouragement messages
 const SENYA_MESSAGES = {
-    welcome: "Let's learn A–M together!",
+    welcome: "Let's learn A–M together! 🌟",
     correct: [
-        "Amazing! Keep going!",
-        "Perfect! You're on fire!",
-        "Great job! You're a natural!",
-        "Wonderful! You're crushing it!",
-        "Fantastic! Next one!",
+        "Amazing! Keep going! ✨",
+        "Perfect! You're on fire! 🔥",
+        "Great job! You're a natural! 🌟",
+        "Wonderful! You're crushing it! 💪",
+        "Fantastic! Next one! 🎉",
     ],
     struggle: [
-        "Try curling your fingers more...",
-        "Keep your hand steady!",
-        "Make the shape clearer!",
-        "You got this! Try again!",
-        "Almost there! One more try!",
+        "Try curling your fingers more... 💡",
+        "Keep your hand steady! ✋",
+        "Make the shape clearer! 👀",
+        "You got this! Try again! 💪",
+        "Almost there! One more try! 🌟",
     ],
-    complete: "YOU DID IT! ALL 13 LETTERS!",
+    complete: "YOU DID IT! ALL 13 LETTERS! 🏆",
 };
 
-// Letter struggle tracking
 interface LetterAttempt {
     letter: string;
     attempts: number;
@@ -80,7 +98,6 @@ export default function WebViewCameraScreen() {
     const [confidence, setConfidence] = useState(0);
     const [isConnected, setIsConnected] = useState(false);
     const [permission, requestPermission] = useCameraPermissions();
-    const [showBrowserButton, setShowBrowserButton] = useState(true);
 
     // ── Audio state ──
     const [gestureSound, setGestureSound] = useState<Audio.Sound | null>(null);
@@ -109,47 +126,46 @@ export default function WebViewCameraScreen() {
     const [popupMessage, setPopupMessage] = useState('');
     const [popupSubMessage, setPopupSubMessage] = useState('');
 
-    // Track the last detected letter to avoid counting transitions as mistakes
+    // Track the last detected letter
     const [lastProcessedLetter, setLastProcessedLetter] = useState<string>('');
     const [letterStableCount, setLetterStableCount] = useState(0);
 
-    // Auto-scroll ref
-    const [letterWidth, setLetterWidth] = useState(50); // Approximate width of each letter slot + margin
-
-    // Senya message cooldown - prevents rapid flashing of messages
+    // Senya message cooldown
     const senyaMsgCooldownRef = useRef<number>(0);
-    const SENYA_COOLDOWN_MS = 3000; // 3 seconds between non-critical messages
+    const SENYA_COOLDOWN_MS = 3000;
 
     // Star animations for results modal
     const starAnim1 = useRef(new Animated.Value(0)).current;
     const starAnim2 = useRef(new Animated.Value(0)).current;
     const starAnim3 = useRef(new Animated.Value(0)).current;
 
-    // ── Play correct gesture sound ──
+    // Target letter "pop" animation — plays whenever the target changes,
+    // gives kids a clear, playful cue that a new letter is up
+    const targetBounceAnim = useRef(new Animated.Value(1)).current;
+
+    const savedLettersRef = useRef<Set<string>>(new Set());
+    const lastAttemptLetterRef = useRef<string>('');
+    const lastAttemptTimeRef = useRef<number>(0);
+    const MIN_ATTEMPT_INTERVAL = 1000;
+
+    // Positions of each letter node along the horizontal letter path,
+    // captured via onLayout, so we can auto-scroll to the active one
+    const letterNodePositions = useRef<Record<string, number>>({});
+    const letterTrackWidth = useRef<number>(0);
+
+    // ── Sound Functions ──
     async function playGestureSound() {
         try {
-            // Don't play if a sound is already playing
             if (isSoundPlaying) return;
-
             setIsSoundPlaying(true);
-
-            // Unload any existing sound
             if (gestureSound) {
                 await gestureSound.unloadAsync();
             }
-
             const { sound } = await Audio.Sound.createAsync(
                 CORRECT_GESTURE_SOUND,
-                {
-                    shouldPlay: true,
-                    isLooping: false,
-                    volume: 0.8, // 80% volume for pleasant feedback
-                }
+                { shouldPlay: true, isLooping: false, volume: 0.8 }
             );
-
             setGestureSound(sound);
-
-            // Auto-cleanup after playback
             sound.setOnPlaybackStatusUpdate((status) => {
                 if (status.isLoaded && status.didJustFinish) {
                     sound.unloadAsync();
@@ -157,46 +173,34 @@ export default function WebViewCameraScreen() {
                     setIsSoundPlaying(false);
                 }
             });
-
         } catch (error) {
             console.error('Failed to play gesture sound:', error);
             setIsSoundPlaying(false);
         }
     }
 
-    // ── Play completion sound ──
     async function playCompleteSound() {
         try {
-            // Unload any existing sound
             if (completeSound) {
                 await completeSound.unloadAsync();
             }
-
             const { sound } = await Audio.Sound.createAsync(
                 GESTURE_COMPLETE_SOUND,
-                {
-                    shouldPlay: true,
-                    isLooping: false,
-                    volume: 1.0, // Full volume for celebration!
-                }
+                { shouldPlay: true, isLooping: false, volume: 1.0 }
             );
-
             setCompleteSound(sound);
-
-            // Auto-cleanup after playback
             sound.setOnPlaybackStatusUpdate((status) => {
                 if (status.isLoaded && status.didJustFinish) {
                     sound.unloadAsync();
                     setCompleteSound(null);
                 }
             });
-
         } catch (error) {
             console.error('Failed to play complete sound:', error);
         }
     }
 
-    // Get current target letter (first incomplete)
+    // ── Helper Functions ──
     const getCurrentTarget = () => {
         for (const letter of ALPHABET_PART1) {
             if (!completedLetters.has(letter)) return letter;
@@ -204,84 +208,10 @@ export default function WebViewCameraScreen() {
         return null;
     };
 
-    // Initialize letter tracking
-    useEffect(() => {
-        const initial: Record<string, LetterAttempt> = {};
-        ALPHABET_PART1.forEach(letter => {
-            initial[letter] = {
-                letter,
-                attempts: 0,
-                wrongAttempts: 0,
-                successCount: 0,
-            };
-        });
-        setLetterAttempts(initial);
-        setStartTime(Date.now());
-        setEndTime(null);
-
-        // ── Cleanup sounds on unmount ──
-        return () => {
-            if (gestureSound) {
-                gestureSound.unloadAsync();
-            }
-            if (completeSound) {
-                completeSound.unloadAsync();
-            }
-        };
-    }, []);
-
-    // Auto-scroll to current target when it changes
-    useEffect(() => {
-        const target = getCurrentTarget();
-        if (target) {
-            setCurrentTarget(target);
-            // Auto-scroll to the current target letter
-            const targetIndex = ALPHABET_PART1.indexOf(target);
-            if (targetIndex >= 0 && scrollViewRef.current) {
-                const slotWidth = 54; // width of each slot + margin
-                const scrollX = targetIndex * slotWidth - (width - 100) / 2;
-                setTimeout(() => {
-                    scrollViewRef.current?.scrollTo({
-                        x: Math.max(0, scrollX),
-                        animated: true,
-                    });
-                }, 100);
-            }
-        } else if (completedLetters.size === ALPHABET_PART1.length) {
-            setIsModuleComplete(true);
-            setSenyaMessage(SENYA_MESSAGES.complete);
-            const endNow = Date.now();
-            setEndTime(endNow);
-            const elapsed = Math.round((endNow - startTime) / 1000);
-            setStarRating(elapsed < 30 ? 3 : elapsed < 60 ? 2 : 1);
-
-            // ── Play completion sound when all letters are done ──
-            playCompleteSound();
-
-            setTimeout(() => {
-                setShowResults(true);
-            }, 1500);
-        }
-    }, [completedLetters]);
-
-    // Animate stars when results are shown
-    useEffect(() => {
-        if (showResults) {
-            starAnim1.setValue(0);
-            starAnim2.setValue(0);
-            starAnim3.setValue(0);
-            setTimeout(() => Animated.spring(starAnim1, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(), 300);
-            setTimeout(() => Animated.spring(starAnim2, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(), 550);
-            setTimeout(() => Animated.spring(starAnim3, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(), 800);
-        }
-    }, [showResults]);
-
-    // Get random message from array
     const getRandomMessage = (messages: string[]) => {
         return messages[Math.floor(Math.random() * messages.length)];
     };
 
-    // Show cute popup - smaller rounded rectangle
     const showCutePopup = (message: string, subMessage: string = '') => {
         setPopupMessage(message);
         setPopupSubMessage(subMessage);
@@ -293,7 +223,6 @@ export default function WebViewCameraScreen() {
             tension: 40,
             useNativeDriver: true,
         }).start();
-
         setTimeout(() => {
             Animated.timing(popupAnim, {
                 toValue: 0,
@@ -305,209 +234,13 @@ export default function WebViewCameraScreen() {
         }, 1200);
     };
 
-    const savedLettersRef = useRef<Set<string>>(new Set());
-
-    const lastAttemptLetterRef = useRef<string>('');
-    const lastAttemptTimeRef = useRef<number>(0);
-    const MIN_ATTEMPT_INTERVAL = 1000; // 1 second minimum between attempts
-
-    // Update the handleDetection function - only save when a letter is completed
-    const handleDetection = async (data: any) => {
-        const { letter, confidence: conf } = data;
-
-        if (letter && letter !== '✋' && letter.length === 1) {
-            setDetectedLetter(letter);
-            setConfidence(conf || 0);
-            setIsConnected(true);
-            setShowBrowserButton(false);
-
-            // Check if this is a stable detection (same letter repeated)
-            if (letter === lastProcessedLetter) {
-                setLetterStableCount(prev => prev + 1);
-            } else {
-                setLastProcessedLetter(letter);
-                setLetterStableCount(0);
-                return;
-            }
-
-            // Only process after 3 stable detections (more accurate)
-            if (letterStableCount < 2) {
-                return;
-            }
-
-            // ─── COUNT THIS AS AN ATTEMPT ONLY IF: ───
-            // 1. It's a different letter OR
-            // 2. It's been more than 1 second since the last attempt
-            const now = Date.now();
-            const isNewLetter = letter !== lastAttemptLetterRef.current;
-            const isTimeForNewAttempt = now - lastAttemptTimeRef.current >= MIN_ATTEMPT_INTERVAL;
-
-            if (isNewLetter || isTimeForNewAttempt) {
-                // This is a meaningful attempt
-                lastAttemptLetterRef.current = letter;
-                lastAttemptTimeRef.current = now;
-
-                // Update letter attempts (only for meaningful attempts)
-                if (ALPHABET_PART1.includes(letter)) {
-                    setLetterAttempts(prev => {
-                        const current = prev[letter] || { letter, attempts: 0, wrongAttempts: 0, successCount: 0 };
-                        return {
-                            ...prev,
-                            [letter]: {
-                                ...current,
-                                attempts: current.attempts + 1,
-                                lastAttempt: Date.now(),
-                            }
-                        };
-                    });
-                }
-            }
-
-            // Gamification logic
-            if (ALPHABET_PART1.includes(letter)) {
-                const target = getCurrentTarget();
-
-                if (letter === target) {
-                    // CORRECT!
-                    if (!completedLetters.has(letter)) {
-                        // ── Play the gesture sound on correct detection ──
-                        await playGestureSound();
-
-                        const newCompleted = new Set(completedLetters);
-                        newCompleted.add(letter);
-                        setCompletedLetters(newCompleted);
-                        setConsecutiveWrong(0);
-                        setTotalCorrectAttempts(prev => prev + 1);
-
-                        // Update success tracking
-                        setLetterAttempts(prev => {
-                            const current = prev[letter] || { letter, attempts: 0, wrongAttempts: 0, successCount: 0 };
-                            return {
-                                ...prev,
-                                [letter]: {
-                                    ...current,
-                                    successCount: current.successCount + 1,
-                                    firstSuccess: current.firstSuccess || Date.now(),
-                                }
-                            };
-                        });
-
-                        // ─── SAVE TO BACKEND FOR THIS LETTER ──────────────
-                        if (!savedLettersRef.current.has(letter)) {
-                            savedLettersRef.current.add(letter);
-                            await saveSingleLetterPerformance(letter);
-                        }
-
-                        // Senya celebration
-                        const msg = getRandomMessage(SENYA_MESSAGES.correct);
-                        setSenyaMessage(msg);
-                        senyaMsgCooldownRef.current = Date.now();
-
-                        showCutePopup(
-                            `${letter} ✓`,
-                            `${completedLetters.size + 1}/${ALPHABET_PART1.length}`
-                        );
-                    }
-                } else if (completedLetters.has(letter)) {
-                    // Already completed - throttled message
-                    const now = Date.now();
-                    if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
-                        senyaMsgCooldownRef.current = now;
-                        if (target) {
-                            setSenyaMessage(`You got ${letter}! Try ${target}`);
-                        } else {
-                            setSenyaMessage(SENYA_MESSAGES.complete);
-                        }
-                    }
-                    setConsecutiveWrong(0);
-                } else {
-                    // Wrong letter - only count if stable AND it's a new attempt
-                    if (letterStableCount >= 2 && (isNewLetter || isTimeForNewAttempt)) {
-                        const newWrong = consecutiveWrong + 1;
-                        setConsecutiveWrong(newWrong);
-                        setTotalWrongAttempts(prev => prev + 1);
-
-                        if (target) {
-                            setLetterAttempts(prev => {
-                                const current = prev[target] || { letter: target, attempts: 0, wrongAttempts: 0, successCount: 0 };
-                                return {
-                                    ...prev,
-                                    [target]: {
-                                        ...current,
-                                        wrongAttempts: current.wrongAttempts + 1,
-                                    }
-                                };
-                            });
-                        }
-
-                        // Throttled struggle messages
-                        const now = Date.now();
-                        if (now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
-                            senyaMsgCooldownRef.current = now;
-                            if (newWrong >= 4) {
-                                const msg = getRandomMessage(SENYA_MESSAGES.struggle);
-                                setSenyaMessage(msg);
-                                setConsecutiveWrong(0);
-                                showCutePopup(
-                                    `💡 ${target}`,
-                                    'Keep your hand steady'
-                                );
-                            } else if (newWrong >= 2) {
-                                setSenyaMessage(`Try making ${target} shape!`);
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Letter not in A-M - throttled message
-                const target = getCurrentTarget();
-                const now = Date.now();
-                if (target && !isModuleComplete && now - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
-                    senyaMsgCooldownRef.current = now;
-                    setSenyaMessage(`We're learning ${target}`);
-                }
-            }
-        } else {
-            // No hand detected - reset attempt tracking
-            setDetectedLetter('✋');
-            setConfidence(0);
-            setLastProcessedLetter('');
-            setLetterStableCount(0);
-            // Don't reset lastAttemptLetterRef here - keep it for context
-
-            const now = Date.now();
-            if (!isModuleComplete && completedLetters.size < ALPHABET_PART1.length && now - senyaMsgCooldownRef.current >= 5000) {
-                senyaMsgCooldownRef.current = now;
-                const target = getCurrentTarget();
-                if (target) {
-                    setSenyaMessage(`Show me ${target}!`);
-                }
-            }
-        }
-    };
-
-    // ─── SAVE SINGLE LETTER PERFORMANCE ──────────────────────────────
+    // ── Save Performance ──
     const saveSingleLetterPerformance = async (letter: string) => {
         try {
             const token = await AsyncStorage.getItem('userToken');
-            if (!token) {
-                console.log('ℹ️ No auth token found, skipping save');
-                return null;
-            }
-
-            // Get the data for just this letter
-            const data = letterAttempts[letter] || {
-                letter,
-                attempts: 0,
-                wrongAttempts: 0,
-                successCount: 0
-            };
-
-            // Only save if there were attempts
-            if (data.attempts === 0) {
-                return null;
-            }
-
+            if (!token) return null;
+            const data = letterAttempts[letter] || { letter, attempts: 0, wrongAttempts: 0, successCount: 0 };
+            if (data.attempts === 0) return null;
             const letterPerformance = [{
                 letter: letter,
                 attempts: data.attempts || 0,
@@ -515,41 +248,19 @@ export default function WebViewCameraScreen() {
                 success_count: data.successCount || 0,
                 consecutive_wrong: 0,
             }];
-
-            console.log(`📤 Saving performance for letter ${letter}...`);
-
-            const result = await api.saveGesturePerformance(
-                'alphabet_part1',
-                letterPerformance,
-                `session_${Date.now()}`
-            );
-
-            if (result && result.success) {
-                console.log(`✅ Letter ${letter} saved!`);
-                return result;
-            } else {
-                console.error(`❌ Failed to save letter ${letter}:`, result);
-                return null;
-            }
+            return await api.saveGesturePerformance('alphabet_part1', letterPerformance, `session_${Date.now()}`);
         } catch (error) {
-            console.error(`❌ Error saving letter ${letter}:`, error);
+            console.error('Error saving letter performance:', error);
             return null;
         }
     };
 
-    // ─── SAVE ALL ON COMPLETION ──────────────────────────────────────
     const saveAllPerformance = async () => {
         try {
             const token = await AsyncStorage.getItem('userToken');
             if (!token) return null;
-
             const letterPerformances = ALPHABET_PART1.map(letter => {
-                const data = letterAttempts[letter] || {
-                    letter,
-                    attempts: 0,
-                    wrongAttempts: 0,
-                    successCount: 0
-                };
+                const data = letterAttempts[letter] || { letter, attempts: 0, wrongAttempts: 0, successCount: 0 };
                 return {
                     letter: letter,
                     attempts: data.attempts || 0,
@@ -558,68 +269,191 @@ export default function WebViewCameraScreen() {
                     consecutive_wrong: 0,
                 };
             });
-
             const totalAttempts = letterPerformances.reduce((sum, l) => sum + l.attempts, 0);
             if (totalAttempts === 0) return null;
-
-            console.log(`📤 Saving final performance...`);
-
-            const result = await api.saveGesturePerformance(
-                'alphabet_part1',
-                letterPerformances,
-                `session_${Date.now()}`
-            );
-
-            if (result && result.success) {
-                console.log('✅ Final performance saved!');
-                return result;
-            }
-            return null;
+            return await api.saveGesturePerformance('alphabet_part1', letterPerformances, `session_${Date.now()}`);
         } catch (error) {
-            console.error('❌ Error saving final performance:', error);
+            console.error('Error saving final performance:', error);
             return null;
         }
     };
 
-    // Update the useEffect for module completion
+    // ── Initialize ──
     useEffect(() => {
-        if (isModuleComplete) {
-            // Save all performance data at the end
-            saveAllPerformance().then(result => {
-                if (result) {
-                    console.log('📊 All performance data saved');
+        const initial: Record<string, LetterAttempt> = {};
+        ALPHABET_PART1.forEach(letter => {
+            initial[letter] = { letter, attempts: 0, wrongAttempts: 0, successCount: 0 };
+        });
+        setLetterAttempts(initial);
+        setStartTime(Date.now());
+        setEndTime(null);
+        return () => {
+            if (gestureSound) gestureSound.unloadAsync();
+            if (completeSound) completeSound.unloadAsync();
+        };
+    }, []);
+
+    useEffect(() => {
+        const target = getCurrentTarget();
+        if (target) {
+            setCurrentTarget(target);
+        } else if (completedLetters.size === ALPHABET_PART1.length) {
+            setIsModuleComplete(true);
+            setSenyaMessage(SENYA_MESSAGES.complete);
+            const endNow = Date.now();
+            setEndTime(endNow);
+            const elapsed = Math.round((endNow - startTime) / 1000);
+            setStarRating(elapsed < 30 ? 3 : elapsed < 60 ? 2 : 1);
+            playCompleteSound();
+            saveAllPerformance();
+            setTimeout(() => setShowResults(true), 1500);
+        }
+    }, [completedLetters]);
+
+    // Bounce the target letter every time it changes — a friendly, obvious
+    // "new letter!" cue for kids instead of a silent swap
+    useEffect(() => {
+        targetBounceAnim.setValue(0.55);
+        Animated.spring(targetBounceAnim, {
+            toValue: 1,
+            friction: 4,
+            tension: 60,
+            useNativeDriver: true,
+        }).start();
+    }, [currentTarget]);
+
+    // Keep the letter path scrolled so the current target is always visible —
+    // waits a tick for onLayout to have recorded the node's position
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            const x = letterNodePositions.current[currentTarget];
+            if (x === undefined || !scrollViewRef.current) return;
+            const NODE_SPAN = 48; // node width + its right margin
+            const visibleWidth = letterTrackWidth.current || width - 40;
+            const centerOffset = Math.max(0, (visibleWidth / 2) - (NODE_SPAN / 2));
+            scrollViewRef.current.scrollTo({ x: Math.max(0, x - centerOffset), animated: true });
+        }, 50);
+        return () => clearTimeout(timeout);
+    }, [currentTarget]);
+
+    useEffect(() => {
+        if (showResults) {
+            starAnim1.setValue(0);
+            starAnim2.setValue(0);
+            starAnim3.setValue(0);
+            setTimeout(() => Animated.spring(starAnim1, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(), 300);
+            setTimeout(() => Animated.spring(starAnim2, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(), 550);
+            setTimeout(() => Animated.spring(starAnim3, { toValue: 1, friction: 5, tension: 40, useNativeDriver: true }).start(), 800);
+        }
+    }, [showResults]);
+
+    // ── Handle Detection ──
+    const handleDetection = async (data: any) => {
+        const { letter, confidence: conf } = data;
+        if (letter && letter !== '✋' && letter.length === 1) {
+            setDetectedLetter(letter);
+            setConfidence(conf || 0);
+            setIsConnected(true);
+
+            if (letter === lastProcessedLetter) {
+                setLetterStableCount(prev => prev + 1);
+            } else {
+                setLastProcessedLetter(letter);
+                setLetterStableCount(0);
+                return;
+            }
+
+            if (letterStableCount < 2) return;
+
+            const now = Date.now();
+            const isNewLetter = letter !== lastAttemptLetterRef.current;
+            const isTimeForNewAttempt = now - lastAttemptTimeRef.current >= MIN_ATTEMPT_INTERVAL;
+
+            if (isNewLetter || isTimeForNewAttempt) {
+                lastAttemptLetterRef.current = letter;
+                lastAttemptTimeRef.current = now;
+                if (ALPHABET_PART1.includes(letter)) {
+                    setLetterAttempts(prev => {
+                        const current = prev[letter] || { letter, attempts: 0, wrongAttempts: 0, successCount: 0 };
+                        return { ...prev, [letter]: { ...current, attempts: current.attempts + 1, lastAttempt: Date.now() } };
+                    });
                 }
-            });
+            }
+
+            if (ALPHABET_PART1.includes(letter)) {
+                const target = getCurrentTarget();
+                if (letter === target) {
+                    if (!completedLetters.has(letter)) {
+                        await playGestureSound();
+                        const newCompleted = new Set(completedLetters);
+                        newCompleted.add(letter);
+                        setCompletedLetters(newCompleted);
+                        setConsecutiveWrong(0);
+                        setTotalCorrectAttempts(prev => prev + 1);
+                        setLetterAttempts(prev => {
+                            const current = prev[letter] || { letter, attempts: 0, wrongAttempts: 0, successCount: 0 };
+                            return { ...prev, [letter]: { ...current, successCount: current.successCount + 1, firstSuccess: current.firstSuccess || Date.now() } };
+                        });
+                        if (!savedLettersRef.current.has(letter)) {
+                            savedLettersRef.current.add(letter);
+                            await saveSingleLetterPerformance(letter);
+                        }
+                        const msg = getRandomMessage(SENYA_MESSAGES.correct);
+                        setSenyaMessage(msg);
+                        senyaMsgCooldownRef.current = Date.now();
+                        showCutePopup(`${letter} ✓`, `${completedLetters.size + 1}/${ALPHABET_PART1.length}`);
+                    }
+                } else if (completedLetters.has(letter)) {
+                    const now2 = Date.now();
+                    if (now2 - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
+                        senyaMsgCooldownRef.current = now2;
+                        if (target) setSenyaMessage(`You got ${letter}! Try ${target} 🌟`);
+                        else setSenyaMessage(SENYA_MESSAGES.complete);
+                    }
+                    setConsecutiveWrong(0);
+                } else {
+                    if (letterStableCount >= 2 && (isNewLetter || isTimeForNewAttempt)) {
+                        const newWrong = consecutiveWrong + 1;
+                        setConsecutiveWrong(newWrong);
+                        setTotalWrongAttempts(prev => prev + 1);
+                        if (target) {
+                            setLetterAttempts(prev => {
+                                const current = prev[target] || { letter: target, attempts: 0, wrongAttempts: 0, successCount: 0 };
+                                return { ...prev, [target]: { ...current, wrongAttempts: current.wrongAttempts + 1 } };
+                            });
+                        }
+                        const now3 = Date.now();
+                        if (now3 - senyaMsgCooldownRef.current >= SENYA_COOLDOWN_MS) {
+                            senyaMsgCooldownRef.current = now3;
+                            if (newWrong >= 4) {
+                                const msg = getRandomMessage(SENYA_MESSAGES.struggle);
+                                setSenyaMessage(msg);
+                                setConsecutiveWrong(0);
+                                showCutePopup(`💡 ${target}`, 'Keep your hand steady');
+                            } else if (newWrong >= 2) {
+                                setSenyaMessage(`Try making ${target} shape! 💪`);
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            setDetectedLetter('✋');
+            setConfidence(0);
+            setLastProcessedLetter('');
+            setLetterStableCount(0);
+            const now = Date.now();
+            if (!isModuleComplete && completedLetters.size < ALPHABET_PART1.length && now - senyaMsgCooldownRef.current >= 5000) {
+                senyaMsgCooldownRef.current = now;
+                const target = getCurrentTarget();
+                if (target) setSenyaMessage(`Show me ${target}! ✋`);
+            }
         }
-    }, [isModuleComplete]);
-
-    // Update the handleContinue function
-    const handleContinue = async () => {
-        // Save any remaining letters that might not have been saved
-        const unsavedLetters = ALPHABET_PART1.filter(
-            letter => completedLetters.has(letter) && !savedLettersRef.current.has(letter)
-        );
-
-        for (const letter of unsavedLetters) {
-            await saveSingleLetterPerformance(letter);
-        }
-
-        // Final save just in case
-        await saveAllPerformance();
-
-        setShowResults(false);
-        router.back();
     };
-
 
     const handleMessage = (event: any) => {
         try {
             const data = JSON.parse(event.nativeEvent.data);
-            // Only log when we get a successful detection (not every frame)
-            if (data.letter && data.letter !== '✋' && data.confidence && data.confidence > 0.5) {
-                // console.log('📨 Received from WebView:', data); // Keep this commented or remove
-            }
-
             if (data.letter !== undefined) {
                 handleDetection(data);
             }
@@ -628,74 +462,41 @@ export default function WebViewCameraScreen() {
         }
     };
 
-    // Calculate results
     const getResults = () => {
         const timeToUse = endTime || Date.now();
         const totalSecs = Math.round((timeToUse - startTime) / 1000);
         const minutes = Math.floor(totalSecs / 60);
         const seconds = totalSecs % 60;
         const timeDisplay = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-
-        // Find struggling letters - correctly attributed to target letter
-        // Sorted by most wrong attempts so the worst offenders appear first
         const strugglingLetters = Object.values(letterAttempts)
             .filter(l => l.wrongAttempts >= 2)
             .sort((a, b) => b.wrongAttempts - a.wrongAttempts)
             .map(l => l.letter)
             .slice(0, 3);
-
-        // Find easy letters (completed with zero wrong attempts)
         const easyLetters = Object.values(letterAttempts)
             .filter(l => l.successCount > 0 && l.wrongAttempts === 0)
             .map(l => l.letter);
-
-        const completedCount = completedLetters.size;
-
         return {
             totalTime: timeDisplay,
             strugglingLetters,
             easyLetters,
-            totalCorrect: completedCount,
+            totalCorrect: completedLetters.size,
             totalWrong: totalWrongAttempts,
         };
     };
 
-
-
-
-
-
-    const GESTURE_URL = 'https://prude-overpay-grievance.ngrok-free.dev/gesture.html';
-
-    // Inject CSS to hide detection box and other UI elements from the HTML
-    const injectedJavaScript = `
-        (function() {
-            var box = document.getElementById('detection-box');
-            if (box) box.style.display = 'none';
-            
-            var progressBar = document.querySelector('.progress-bar');
-            if (progressBar) progressBar.style.display = 'none';
-            
-            var statusBar = document.getElementById('status-bar');
-            if (statusBar) statusBar.style.display = 'none';
-            
-            var overlay = document.getElementById('overlay');
-            if (overlay) overlay.style.display = 'none';
-            
-            var container = document.getElementById('container');
-            if (container) {
-                container.style.position = 'absolute';
-                container.style.top = '0';
-                container.style.left = '0';
-                container.style.width = '100%';
-                container.style.height = '100%';
-            }
-            
-            console.log('🎮 Gamification mode activated!');
-        })();
-    `;
+    const handleContinue = async () => {
+        const unsavedLetters = ALPHABET_PART1.filter(letter => completedLetters.has(letter) && !savedLettersRef.current.has(letter));
+        for (const letter of unsavedLetters) {
+            await saveSingleLetterPerformance(letter);
+        }
+        await saveAllPerformance();
+        setShowResults(false);
+        router.back();
+    };
 
     const openInBrowser = async () => {
+        const GESTURE_URL = 'https://prude-overpay-grievance.ngrok-free.dev/gesture.html';
         try {
             const urlWithHeader = GESTURE_URL + '?ngrok-skip-browser-warning=true';
             await WebBrowser.openBrowserAsync(urlWithHeader);
@@ -703,6 +504,65 @@ export default function WebViewCameraScreen() {
             Linking.openURL(GESTURE_URL);
         }
     };
+
+    const GESTURE_URL = 'https://prude-overpay-grievance.ngrok-free.dev/gesture.html';
+
+    // ── Injected JS ──────────────────────────────────────────────────────
+    // The page's own HUD (status text, progress bar, detection labels) was
+    // leaking through and stacking with our React Native overlay. Instead of
+    // hiding a handful of known ids once, we hide anything that looks like a
+    // HUD element AND keep re-hiding it with a MutationObserver, since the
+    // page likely redraws that UI every time a new gesture is detected.
+    const injectedJavaScript = `
+        (function() {
+            var HUD_SELECTORS = [
+                '#detection-box', '.progress-bar', '#status-bar', '#overlay',
+                '.hud', '.status', '.status-badge', '.badge', '.controls',
+                '.detection-label', '.connection-status', '#connection-indicator',
+                '.letter-display', '.confidence-bar', '.detected-label',
+                '[class*="status"]', '[class*="hud"]', '[class*="detect"]',
+                '[id*="status"]', '[id*="hud"]', '[id*="detect"]'
+            ];
+
+            function hideNativeUI() {
+                HUD_SELECTORS.forEach(function(sel) {
+                    try {
+                        document.querySelectorAll(sel).forEach(function(el) {
+                            el.style.setProperty('display', 'none', 'important');
+                            el.style.setProperty('visibility', 'hidden', 'important');
+                        });
+                    } catch (e) {}
+                });
+
+                var container = document.getElementById('container');
+                if (container) {
+                    container.style.position = 'absolute';
+                    container.style.top = '0';
+                    container.style.left = '0';
+                    container.style.width = '100%';
+                    container.style.height = '100%';
+                }
+
+                // Make sure the camera feed itself always fills the frame
+                document.querySelectorAll('video, canvas').forEach(function(el) {
+                    el.style.width = '100%';
+                    el.style.height = '100%';
+                    el.style.objectFit = 'cover';
+                });
+            }
+
+            hideNativeUI();
+
+            // Re-run whenever the page mutates its own DOM (e.g. redrawing a
+            // "Detected: X" label), so leftover HUD never reappears on top
+            // of our overlay.
+            var observer = new MutationObserver(hideNativeUI);
+            observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+
+            console.log('🎮 Gamification mode activated!');
+        })();
+        true;
+    `;
 
     if (!permission) {
         return (
@@ -721,9 +581,7 @@ export default function WebViewCameraScreen() {
                 <View style={styles.center}>
                     <Ionicons name="camera-outline" size={64} color="#4b7bbb" />
                     <Text style={styles.title}>Camera Access Required</Text>
-                    <Text style={styles.subtitle}>
-                        Please grant camera permission to use gesture recognition.
-                    </Text>
+                    <Text style={styles.subtitle}>Please grant camera permission to use gesture recognition.</Text>
                     <Pressable style={styles.button} onPress={requestPermission}>
                         <Text style={styles.buttonText}>Grant Permission</Text>
                     </Pressable>
@@ -732,14 +590,17 @@ export default function WebViewCameraScreen() {
         );
     }
 
+    const progressPct = (completedLetters.size / ALPHABET_PART1.length) * 100;
+    const isIdle = detectedLetter === '✋';
+
     return (
         <SafeAreaView style={styles.container}>
-            {/* Header */}
+            {/* ── Header ── */}
             <View style={styles.header}>
                 <Pressable onPress={() => router.back()} style={styles.backBtn}>
                     <Ionicons name="arrow-back" size={24} color="#0f3172" />
                 </Pressable>
-                <Text style={styles.headerTitle}>Alphabet Part 1</Text>
+                <Text style={styles.headerTitle}>Alphabet A–M</Text>
                 <View style={[styles.statusBadge, isConnected && styles.statusActive]}>
                     <Text style={[styles.statusText, isConnected && styles.statusActiveText]}>
                         {isConnected ? '🟢 Live' : '⏳ Loading'}
@@ -747,50 +608,14 @@ export default function WebViewCameraScreen() {
                 </View>
             </View>
 
-            {/* Senya Section with Image */}
-            <View style={styles.senyaSection}>
-                <Image
-                    source={require('../../assets/images/img/senya_teaching.png')}
-                    style={styles.senyaImage}
-                    resizeMode="contain"
-                />
-                <Text style={styles.senyaMessage}>{senyaMessage}</Text>
-            </View>
-
-            {/* Progress */}
-            <View style={styles.progressHeader}>
-                <Text style={styles.progressText}>
-                    Progress: {completedLetters.size}/{ALPHABET_PART1.length}
-                </Text>
-                <View style={styles.progressBar}>
-                    <View
-                        style={[
-                            styles.progressFill,
-                            { width: `${(completedLetters.size / ALPHABET_PART1.length) * 100}%` }
-                        ]}
-                    />
-                </View>
-                <Text style={styles.targetText}>
-                    🎯 {currentTarget}
-                </Text>
-            </View>
-
-            {/* WebView Container */}
+            {/* ── Full Screen Camera with Overlay ── */}
             <View style={styles.webviewContainer}>
                 <WebView
                     ref={webViewRef}
-                    source={{
-                        uri: GESTURE_URL,
-                        headers: {
-                            'ngrok-skip-browser-warning': 'true',
-                        }
-                    }}
+                    source={{ uri: GESTURE_URL, headers: { 'ngrok-skip-browser-warning': 'true' } }}
                     style={styles.webview}
                     onLoadStart={() => setLoading(true)}
-                    onLoadEnd={() => {
-                        setLoading(false);
-                        console.log('✅ WebView loaded');
-                    }}
+                    onLoadEnd={() => { setLoading(false); }}
                     onMessage={handleMessage}
                     injectedJavaScript={injectedJavaScript}
                     mediaPlaybackRequiresUserAction={false}
@@ -801,215 +626,186 @@ export default function WebViewCameraScreen() {
                     allowsFullscreenVideo={false}
                     scrollEnabled={false}
                     allowsAirPlayForMediaPlayback={true}
-                    userAgent={
-                        Platform.OS === 'android'
-                            ? 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Mobile Safari/537.36'
-                            : 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+                    userAgent={Platform.OS === 'android'
+                        ? 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Mobile Safari/537.36'
+                        : 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
                     }
                 />
+
                 {loading && (
                     <View style={styles.loadingOverlay}>
-                        <ActivityIndicator size="large" color="#FFD700" />
+                        <ActivityIndicator size="large" color="#FBBF24" />
                         <Text style={styles.loadingOverlayText}>Loading gesture recognition...</Text>
-                        <Text style={styles.loadingSubtext}>Connecting to SENAS server</Text>
+                        <Text style={styles.loadingSubtext}>Connecting to SEÑAS server</Text>
                     </View>
                 )}
 
+                {/* ── Camera Overlay Content ── */}
+                <View style={styles.cameraOverlay} pointerEvents="none">
+                    {/* Top: Target Letter + Progress + Senya's message, all clustered together
+                        so the entire middle of the frame stays clear for the hand */}
+                    <View style={styles.overlayTop}>
+                        <View style={styles.targetContainer}>
+                            <Text style={styles.targetLabel}>Show me</Text>
+                            <Animated.View style={[styles.targetLetterBox, { transform: [{ scale: targetBounceAnim }] }]}>
+                                <Text style={styles.targetLetter}>{currentTarget}</Text>
+                                <View style={styles.targetLetterStarBadge}>
+                                    <StarIcon size={11} color="#0f3172" />
+                                </View>
+                            </Animated.View>
+                            <View style={styles.targetProgress}>
+                                <View style={styles.targetProgressTrack}>
+                                    <View style={[styles.targetProgressFill, { width: `${progressPct}%` }]} />
+                                </View>
+                                <Text style={styles.targetProgressText}>
+                                    {completedLetters.size}/{ALPHABET_PART1.length}
+                                </Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.senyaBubble}>
+                            <View style={styles.senyaBubbleTail} />
+                            <Image
+                                source={require('../../assets/images/img/senya_teaching.png')}
+                                style={styles.overlaySenya}
+                                contentFit="contain"
+                            />
+                            <Text style={styles.overlaySenyaMessage} numberOfLines={2}>{senyaMessage}</Text>
+                        </View>
+                    </View>
+
+                    {/* Bottom: Detected Letter — dims when idle, narrower so it never overlaps the letter path below */}
+                    <View style={styles.overlayBottom}>
+                        <View style={[styles.detectedContainer, isIdle && styles.detectedContainerIdle]}>
+                            <Ionicons name="hand-left" size={16} color={isIdle ? 'rgba(255,255,255,0.5)' : '#10B981'} />
+                            <View style={[styles.detectedLetterBox, isIdle && styles.detectedLetterBoxIdle]}>
+                                <Text style={[styles.detectedLetter, isIdle && styles.detectedLetterIdle]}>{detectedLetter}</Text>
+                            </View>
+                            {confidence > 0 && (
+                                <View style={styles.detectedConfidence}>
+                                    <View style={styles.detectedConfidenceTrack}>
+                                        <View style={[styles.detectedConfidenceFill, { width: `${Math.round(confidence * 100)}%` }]} />
+                                    </View>
+                                    <Text style={styles.detectedConfidenceText}>
+                                        {Math.round(confidence * 100)}%
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    </View>
+                </View>
+
+                {/* Browser fallback button */}
                 {!isConnected && (
-                    <TouchableOpacity
-                        style={styles.browserButton}
-                        onPress={openInBrowser}
-                        activeOpacity={0.8}
-                    >
-                        <Ionicons name="open-outline" size={24} color="#fff" />
+                    <TouchableOpacity style={styles.browserButton} onPress={openInBrowser} activeOpacity={0.8}>
+                        <Ionicons name="open-outline" size={20} color="#fff" />
                         <Text style={styles.browserButtonText}>Open in Browser</Text>
                     </TouchableOpacity>
                 )}
             </View>
 
-            {/* Letter Grid - A to M with auto-scroll */}
-            <ScrollView
-                ref={scrollViewRef}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.letterGridScroll}
-                contentContainerStyle={styles.letterGridContent}
-                scrollEventThrottle={16}
-            >
-                {ALPHABET_PART1.map((letter) => {
-                    const isCompleted = completedLetters.has(letter);
-                    const isActive = letter === currentTarget && !isCompleted;
-                    return (
-                        <View
-                            key={letter}
-                            style={[
-                                styles.letterSlot,
-                                isCompleted && styles.letterCompleted,
-                                isActive && styles.letterActive,
-                            ]}
-                        >
-                            <Text style={[
-                                styles.letterChar,
-                                isCompleted && styles.letterCharCompleted,
-                                isActive && styles.letterCharActive,
-                            ]}>
-                                {letter}
-                            </Text>
-                            {isCompleted && (
-                                <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-                            )}
-                            {isActive && (
-                                <Ionicons name="star" size={13} color="#FFD700" />
-                            )}
-                            {!isCompleted && !isActive && (
-                                <View style={styles.letterStatusDot} />
-                            )}
-                        </View>
-                    );
-                })}
-            </ScrollView>
-
-            {/* Bottom Detection Bar */}
-            <View style={styles.resultBar}>
-                <Text style={styles.resultLabel}>Detected:</Text>
-                <Text style={styles.resultLetter}>{detectedLetter}</Text>
-                {confidence > 0 && (
-                    <View style={styles.confidenceContainer}>
-                        <View style={styles.confidenceBar}>
+            {/* ── Letter Path ── */}
+            <View style={styles.letterGridWrapper}>
+                <View style={styles.letterPathLine} pointerEvents="none" />
+                <ScrollView
+                    ref={scrollViewRef}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.letterGridScroll}
+                    contentContainerStyle={styles.letterGridContent}
+                    onLayout={(e) => { letterTrackWidth.current = e.nativeEvent.layout.width; }}
+                >
+                    {ALPHABET_PART1.map((letter) => {
+                        const isCompleted = completedLetters.has(letter);
+                        const isActive = letter === currentTarget && !isCompleted;
+                        return (
                             <View
-                                style={[
-                                    styles.confidenceFill,
-                                    { width: `${Math.round(confidence * 100)}%` }
-                                ]}
-                            />
-                        </View>
-                        <Text style={styles.resultConfidence}>
-                            {Math.round(confidence * 100)}%
-                        </Text>
-                    </View>
-                )}
+                                key={letter}
+                                style={styles.letterNodeWrapper}
+                                onLayout={(e) => { letterNodePositions.current[letter] = e.nativeEvent.layout.x; }}
+                            >
+                                {isActive && <View style={styles.activePulseRing} />}
+                                <View style={[styles.letterSlot, isCompleted && styles.letterCompleted, isActive && styles.letterActive]}>
+                                    <Text style={[styles.letterChar, isCompleted && styles.letterCharCompleted, isActive && styles.letterCharActive]}>
+                                        {letter}
+                                    </Text>
+                                </View>
+                                {isCompleted && (
+                                    <View style={styles.checkBadge}>
+                                        <CheckIcon size={9} color="#fff" />
+                                    </View>
+                                )}
+                                {isActive && (
+                                    <View style={styles.activeBadge}>
+                                        <StarIcon size={9} color="#fff" />
+                                    </View>
+                                )}
+                            </View>
+                        );
+                    })}
+                </ScrollView>
             </View>
 
-            {/* Cute Popup - Smaller rounded rectangle */}
+            {/* ── Popup ── */}
             {showPopup && (
-                <Animated.View
-                    style={[
-                        styles.popupContainer,
-                        {
-                            opacity: popupAnim,
-                            transform: [
-                                {
-                                    scale: popupAnim.interpolate({
-                                        inputRange: [0, 0.5, 1],
-                                        outputRange: [0.7, 1.05, 1],
-                                    })
-                                }
-                            ]
-                        }
-                    ]}
-                >
+                <Animated.View style={[styles.popupContainer, { opacity: popupAnim, transform: [{ scale: popupAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.7, 1.05, 1] }) }] }]}>
                     <View style={styles.popupContent}>
-                        <Image
-                            source={require('../../assets/images/img/senya_teaching.png')}
-                            style={styles.popupSenya}
-                            resizeMode="contain"
-                        />
+                        <Image source={require('../../assets/images/img/senya_teaching.png')} style={styles.popupSenya} contentFit="contain" />
                         <Text style={styles.popupMessage}>{popupMessage}</Text>
-                        {popupSubMessage ? (
-                            <Text style={styles.popupSubMessage}>{popupSubMessage}</Text>
-                        ) : null}
+                        {popupSubMessage ? <Text style={styles.popupSubMessage}>{popupSubMessage}</Text> : null}
                     </View>
                 </Animated.View>
             )}
 
-            {/* Results Modal - Only when all letters are completed */}
-            <Modal
-                visible={showResults}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setShowResults(false)}
-            >
+            {/* ── Results Modal ── */}
+            <Modal visible={showResults} transparent animationType="fade" onRequestClose={() => setShowResults(false)}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalCard}>
-                        {/* Close button */}
-                        <TouchableOpacity
-                            style={styles.modalClose}
-                            onPress={() => setShowResults(false)}
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        >
+                        <TouchableOpacity style={styles.modalClose} onPress={() => setShowResults(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                             <Ionicons name="close" size={20} color="#0f3172" />
                         </TouchableOpacity>
 
-                        {/* Trophy badge */}
                         <View style={styles.trophyBadge}>
-                            <Ionicons name="trophy" size={32} color="#FFD700" />
+                            <Ionicons name="trophy" size={32} color="#FBBF24" />
                         </View>
 
-                        <Text style={styles.modalTitle}>You Did It!</Text>
-                        <Text style={styles.modalSubtitle}>
-                            All {ALPHABET_PART1.length} letters mastered
-                        </Text>
+                        <Text style={styles.modalTitle}>You Did It! 🎉</Text>
+                        <Text style={styles.modalSubtitle}>All {ALPHABET_PART1.length} letters mastered</Text>
 
-                        {/* Animated star rating */}
                         <View style={styles.starsRow}>
-                            {([starAnim1, starAnim2, starAnim3] as Animated.Value[]).map((anim, i) => {
+                            {[starAnim1, starAnim2, starAnim3].map((anim, i) => {
                                 const isEarned = starRating > i;
                                 return (
-                                    <Animated.View
-                                        key={i}
-                                        style={[
-                                            styles.starWrapper,
-                                            i === 1 && styles.starWrapperCenter,
-                                            { transform: [{ scale: anim }], opacity: anim },
-                                        ]}
-                                    >
-                                        <Ionicons
-                                            name={isEarned ? 'star' : 'star-outline'}
-                                            size={i === 1 ? 40 : 32}
-                                            color={isEarned ? '#FFC93C' : '#D9E2EC'}
-                                        />
+                                    <Animated.View key={i} style={[styles.starWrapper, i === 1 && styles.starWrapperCenter, { transform: [{ scale: anim }], opacity: anim }]}>
+                                        <Ionicons name={isEarned ? 'star' : 'star-outline'} size={i === 1 ? 40 : 32} color={isEarned ? '#FBBF24' : '#D9E2EC'} />
                                     </Animated.View>
                                 );
                             })}
                         </View>
+
                         <View style={styles.starLabelPill}>
-                            <Ionicons
-                                name={starRating === 3 ? 'flash' : starRating === 2 ? 'thumbs-up' : 'leaf'}
-                                size={14}
-                                color="#0f3172"
-                                style={{ marginRight: 6 }}
-                            />
-                            <Text style={styles.starLabel}>
-                                {starRating === 3 ? 'Lightning Fast!' : starRating === 2 ? 'Great Job!' : 'Keep Practicing!'}
-                            </Text>
+                            <Ionicons name={starRating === 3 ? 'flash' : starRating === 2 ? 'thumbs-up' : 'leaf'} size={14} color="#0f3172" style={{ marginRight: 6 }} />
+                            <Text style={styles.starLabel}>{starRating === 3 ? 'Lightning Fast! ⚡' : starRating === 2 ? 'Great Job! 🌟' : 'Keep Practicing! 💪'}</Text>
                         </View>
 
-                        {/* Stats */}
                         {(() => {
                             const results = getResults();
                             return (
                                 <>
                                     <View style={styles.resultsGrid}>
                                         <View style={styles.resultItem}>
-                                            <View style={styles.resultIconWrap}>
-                                                <Ionicons name="timer-outline" size={20} color="#0f3172" />
-                                            </View>
+                                            <View style={styles.resultIconWrap}><Ionicons name="timer-outline" size={18} color="#0f3172" /></View>
                                             <Text style={styles.resultValue}>{results.totalTime}</Text>
                                             <Text style={styles.resultGridLabel}>Time</Text>
                                         </View>
                                         <View style={styles.resultItemDivider} />
                                         <View style={styles.resultItem}>
-                                            <View style={styles.resultIconWrap}>
-                                                <Ionicons name="hand-left-outline" size={20} color="#0f3172" />
-                                            </View>
-                                            <Text style={styles.resultValue}>
-                                                {results.totalCorrect}/{ALPHABET_PART1.length}
-                                            </Text>
+                                            <View style={styles.resultIconWrap}><Ionicons name="hand-left-outline" size={18} color="#0f3172" /></View>
+                                            <Text style={styles.resultValue}>{results.totalCorrect}/{ALPHABET_PART1.length}</Text>
                                             <Text style={styles.resultGridLabel}>Gestures</Text>
                                         </View>
                                     </View>
 
-                                    {/* Notes */}
                                     <View style={styles.senyaFeedback}>
                                         <View style={styles.feedbackHeader}>
                                             <Ionicons name="document-text-outline" size={16} color="#0f3172" />
@@ -1017,31 +813,15 @@ export default function WebViewCameraScreen() {
                                         </View>
                                         {(() => {
                                             const items: { icon: any; color: string; text: string }[] = [];
-
-                                            if (starRating === 3) {
-                                                items.push({ icon: 'sparkles', color: '#FFC93C', text: "You're absolutely incredible at this!" });
-                                            } else if (starRating === 2) {
-                                                items.push({ icon: 'flame', color: '#FF7A45', text: 'Great work! A bit more speed for 3 stars.' });
-                                            } else {
-                                                items.push({ icon: 'refresh', color: '#4b7bbb', text: 'Keep practicing! Your hands will get faster.' });
-                                            }
-
+                                            if (starRating === 3) items.push({ icon: 'sparkles', color: '#FBBF24', text: "You're absolutely incredible at this! 🌟" });
+                                            else if (starRating === 2) items.push({ icon: 'flame', color: '#FF7A45', text: 'Great work! A bit more speed for 3 stars. 🔥' });
+                                            else items.push({ icon: 'refresh', color: '#4b7bbb', text: 'Keep practicing! Your hands will get faster. 💪' });
                                             if (results.strugglingLetters.length > 0) {
-                                                items.push({
-                                                    icon: 'alert-circle-outline',
-                                                    color: '#E11D48',
-                                                    text: `Need more help with: ${results.strugglingLetters.join(', ')}`,
-                                                });
+                                                items.push({ icon: 'alert-circle-outline', color: '#E11D48', text: `Need more help with: ${results.strugglingLetters.join(', ')}` });
                                             }
-
                                             if (results.easyLetters.length > 0) {
-                                                items.push({
-                                                    icon: 'checkmark-circle',
-                                                    color: '#10B981',
-                                                    text: `You nailed: ${results.easyLetters.join(', ')}`,
-                                                });
+                                                items.push({ icon: 'checkmark-circle', color: '#10B981', text: `You nailed: ${results.easyLetters.join(', ')} ✨` });
                                             }
-
                                             return items.map((it, i) => (
                                                 <View key={i} style={styles.feedbackRow}>
                                                     <Ionicons name={it.icon} size={14} color={it.color} style={{ marginTop: 2, marginRight: 8 }} />
@@ -1054,11 +834,7 @@ export default function WebViewCameraScreen() {
                             );
                         })()}
 
-                        <TouchableOpacity
-                            style={styles.continueButton}
-                            activeOpacity={0.85}
-                            onPress={handleContinue}  // Changed from inline to handleContinue
-                        >
+                        <TouchableOpacity style={styles.continueButton} activeOpacity={0.85} onPress={handleContinue}>
                             <Text style={styles.continueButtonText}>Continue</Text>
                             <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />
                         </TouchableOpacity>
@@ -1118,108 +894,51 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingHorizontal: 16,
         paddingVertical: 10,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: '#fff',
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(15, 49, 114, 0.08)',
+        borderBottomColor: 'rgba(15,49,114,0.06)',
     },
     backBtn: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255,255,255,0.8)',
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: 'rgba(15,49,114,0.06)',
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(15, 49, 114, 0.1)',
     },
     headerTitle: {
-        fontSize: 18,
+        fontSize: 16,
         fontWeight: '800',
         color: '#0f3172',
     },
     statusBadge: {
         backgroundColor: 'rgba(200,200,200,0.2)',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 10,
     },
     statusActive: {
-        backgroundColor: 'rgba(16,185,129,0.2)',
+        backgroundColor: 'rgba(16,185,129,0.15)',
     },
     statusText: {
-        fontSize: 12,
+        fontSize: 10,
         fontWeight: '700',
         color: '#6B7280',
     },
     statusActiveText: {
         color: '#10B981',
     },
-    senyaSection: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        backgroundColor: 'rgba(255,255,255,0.9)',
-        gap: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(15, 49, 114, 0.05)',
-    },
-    senyaImage: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-    },
-    senyaMessage: {
-        flex: 1,
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#0f3172',
-        fontStyle: 'italic',
-    },
-    progressHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 6,
-        backgroundColor: 'rgba(255,255,255,0.6)',
-        gap: 10,
-    },
-    progressText: {
-        fontSize: 11,
-        fontWeight: '700',
-        color: '#0f3172',
-        minWidth: 70,
-    },
-    progressBar: {
-        flex: 1,
-        height: 4,
-        backgroundColor: 'rgba(15,49,114,0.1)',
-        borderRadius: 2,
-        overflow: 'hidden',
-    },
-    progressFill: {
-        height: '100%',
-        backgroundColor: '#FFD700',
-        borderRadius: 2,
-    },
-    targetText: {
-        fontSize: 14,
-        fontWeight: '800',
-        color: '#FFD700',
-        minWidth: 30,
-        textAlign: 'center',
-    },
     webviewContainer: {
         flex: 1,
-        marginHorizontal: 12,
-        marginVertical: 8,
+        marginHorizontal: 8,
+        marginVertical: 6,
         borderRadius: 16,
         overflow: 'hidden',
         backgroundColor: '#0a1628',
         position: 'relative',
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.1)',
-        minHeight: 250,
+        minHeight: 300,
     },
     webview: {
         flex: 1,
@@ -1231,32 +950,230 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(10, 22, 40, 0.95)',
+        backgroundColor: 'rgba(10,22,40,0.95)',
         alignItems: 'center',
         justifyContent: 'center',
+        zIndex: 20,
     },
     loadingOverlayText: {
         color: '#fff',
-        fontSize: 16,
+        fontSize: 14,
         fontWeight: '600',
-        marginTop: 16,
+        marginTop: 14,
     },
     loadingSubtext: {
-        color: 'rgba(255,255,255,0.6)',
+        color: 'rgba(255,255,255,0.5)',
+        fontSize: 11,
+        marginTop: 4,
+    },
+    // The overlay now sits on an explicit zIndex above the WebView, with
+    // generous top/bottom padding so nothing crowds the notch or the hand.
+    cameraOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'space-between',
+        paddingHorizontal: 14,
+        paddingTop: 18,
+        paddingBottom: 18,
+        zIndex: 10,
+    },
+    overlayTop: {
+        alignItems: 'center',
+    },
+    targetContainer: {
+        backgroundColor: 'rgba(15,49,114,0.68)',
+        borderRadius: 18,
+        padding: 10,
+        paddingHorizontal: 18,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(251,191,36,0.35)',
+    },
+    targetLabel: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.75)',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: 4,
+    },
+    targetLetterBox: {
+        width: 60,
+        height: 60,
+        borderRadius: 18,
+        backgroundColor: '#FBBF24',
+        borderWidth: 2,
+        borderColor: '#fff',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 8,
+        shadowColor: '#FBBF24',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.5,
+        shadowRadius: 10,
+        elevation: 6,
+    },
+    targetLetterStarBadge: {
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: '#fff',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1.5,
+        borderColor: '#FBBF24',
+    },
+    targetLetter: {
+        fontSize: 32,
+        fontWeight: '900',
+        color: '#0f3172',
+    },
+    targetProgress: {
+        width: '100%',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    targetProgressTrack: {
+        flex: 1,
+        height: 5,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+    targetProgressFill: {
+        height: '100%',
+        backgroundColor: '#FBBF24',
+        borderRadius: 3,
+    },
+    targetProgressText: {
+        fontSize: 11,
+        fontWeight: '800',
+        color: '#fff',
+        minWidth: 30,
+        textAlign: 'right',
+    },
+    senyaBubble: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(15,49,114,0.72)',
+        borderRadius: 22,
+        padding: 8,
+        paddingHorizontal: 14,
+        gap: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(251,191,36,0.25)',
+        maxWidth: width * 0.75,
+        marginTop: 10,
+        alignSelf: 'center',
+    },
+    senyaBubbleTail: {
+        position: 'absolute',
+        top: -7,
+        left: '50%',
+        marginLeft: -6,
+        width: 12,
+        height: 12,
+        backgroundColor: 'rgba(15,49,114,0.72)',
+        borderTopWidth: 1,
+        borderLeftWidth: 1,
+        borderColor: 'rgba(251,191,36,0.25)',
+        transform: [{ rotate: '45deg' }],
+    },
+    overlaySenya: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+    },
+    overlaySenyaMessage: {
         fontSize: 13,
-        marginTop: 6,
+        fontWeight: '700',
+        color: '#fff',
+        flex: 1,
+    },
+    overlayBottom: {
+        alignItems: 'center',
+    },
+    detectedContainer: {
+        backgroundColor: 'rgba(15,49,114,0.6)',
+        borderRadius: 16,
+        padding: 6,
+        paddingHorizontal: 10,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(16,185,129,0.3)',
+        flexDirection: 'row',
+        gap: 8,
+        alignSelf: 'center',
+    },
+    detectedContainerIdle: {
+        opacity: 0.55,
+        borderColor: 'rgba(255,255,255,0.15)',
+    },
+    detectedLetterBox: {
+        width: 30,
+        height: 30,
+        borderRadius: 10,
+        backgroundColor: 'rgba(16,185,129,0.2)',
+        borderWidth: 1,
+        borderColor: 'rgba(16,185,129,0.4)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    detectedLetterBoxIdle: {
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(255,255,255,0.15)',
+    },
+    detectedLetter: {
+        fontSize: 16,
+        fontWeight: '900',
+        color: '#10B981',
+    },
+    detectedLetterIdle: {
+        color: 'rgba(255,255,255,0.6)',
+        fontSize: 14,
+    },
+    detectedConfidence: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        width: 56,
+    },
+    detectedConfidenceTrack: {
+        width: 28,
+        height: 3,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        borderRadius: 1.5,
+        overflow: 'hidden',
+    },
+    detectedConfidenceFill: {
+        height: '100%',
+        backgroundColor: '#10B981',
+        borderRadius: 1.5,
+    },
+    detectedConfidenceText: {
+        fontSize: 9,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.7)',
+        width: 24,
     },
     browserButton: {
         position: 'absolute',
-        bottom: 30,
+        bottom: 20,
         alignSelf: 'center',
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#0f3172',
-        paddingHorizontal: 24,
-        paddingVertical: 14,
+        backgroundColor: 'rgba(30,75,143,0.9)',
+        paddingHorizontal: 18,
+        paddingVertical: 10,
         borderRadius: 60,
-        gap: 10,
+        gap: 8,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
@@ -1264,132 +1181,118 @@ const styles = StyleSheet.create({
         elevation: 5,
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.1)',
+        zIndex: 15,
     },
     browserButtonText: {
         color: '#fff',
-        fontSize: 16,
+        fontSize: 13,
         fontWeight: '700',
     },
+    // Letter tracker restyled as a game "path": a soft dotted line runs
+    // behind rounder, friendlier nodes, with a pulse ring on the active
+    // letter and a corner check badge on completed ones.
+    letterGridWrapper: {
+        paddingHorizontal: 6,
+        paddingVertical: 6,
+        position: 'relative',
+    },
+    letterPathLine: {
+        position: 'absolute',
+        left: 24,
+        right: 24,
+        top: '50%',
+        height: 3,
+        marginTop: -1.5,
+        backgroundColor: 'rgba(15,49,114,0.12)',
+        borderRadius: 2,
+    },
     letterGridScroll: {
-        maxHeight: 88,
-        marginHorizontal: 12,
-        marginVertical: 6,
+        maxHeight: 68,
     },
     letterGridContent: {
-        paddingHorizontal: 4,
-        gap: 6,
+        paddingHorizontal: 6,
+        gap: 8,
         alignItems: 'center',
     },
-    letterSlot: {
-        width: 48,
-        height: 64,
-        borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.78)',
-        borderWidth: 2,
-        borderColor: 'rgba(15, 49, 114, 0.12)',
+    letterNodeWrapper: {
+        width: 44,
+        height: 56,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 6,
+        marginRight: 4,
+    },
+    activePulseRing: {
+        position: 'absolute',
+        width: 52,
+        height: 52,
+        borderRadius: 26,
+        backgroundColor: 'rgba(251,191,36,0.25)',
+    },
+    letterSlot: {
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        backgroundColor: '#fff',
+        borderWidth: 2,
+        borderColor: 'rgba(15,49,114,0.12)',
+        alignItems: 'center',
+        justifyContent: 'center',
         shadowColor: '#0f3172',
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.07,
-        shadowRadius: 4,
-        elevation: 2,
+        shadowOpacity: 0.06,
+        shadowRadius: 3,
+        elevation: 1,
     },
     letterCompleted: {
-        backgroundColor: 'rgba(16, 185, 129, 0.12)',
+        backgroundColor: 'rgba(16,185,129,0.12)',
         borderColor: '#10B981',
-        shadowColor: '#10B981',
-        shadowOpacity: 0.2,
     },
     letterActive: {
-        borderColor: '#FFD700',
-        backgroundColor: 'rgba(255, 215, 0, 0.15)',
-        transform: [{ scale: 1.1 }],
-        shadowColor: '#FFD700',
-        shadowOpacity: 0.55,
-        shadowRadius: 10,
-        elevation: 8,
+        borderColor: '#FBBF24',
+        backgroundColor: '#FFFBEB',
+        transform: [{ scale: 1.08 }],
     },
     letterChar: {
-        fontSize: 20,
+        fontSize: 15,
         fontWeight: '800',
-        color: 'rgba(15, 49, 114, 0.35)',
+        color: 'rgba(15,49,114,0.4)',
     },
     letterCharCompleted: {
         color: '#10B981',
-        fontSize: 18,
     },
     letterCharActive: {
-        color: '#92650A',
-        fontSize: 22,
+        color: '#92400E',
+        fontSize: 18,
     },
-    letterStatusDot: {
-        width: 4,
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: 'rgba(15,49,114,0.15)',
-        marginTop: 3,
-    },
-    resultBar: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 10,
-        backgroundColor: 'rgba(255,255,255,0.95)',
-        marginHorizontal: 12,
-        marginBottom: 12,
-        borderRadius: 14,
-        gap: 10,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.8)',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 3,
-    },
-    resultLabel: {
-        fontSize: 11,
-        color: '#4b7bbb',
-        fontWeight: '600',
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-    },
-    resultLetter: {
-        fontSize: 28,
-        fontWeight: '900',
-        color: '#0f3172',
-        minWidth: 34,
-        textAlign: 'center',
-    },
-    confidenceContainer: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-    },
-    confidenceBar: {
-        flex: 1,
-        height: 4,
-        backgroundColor: 'rgba(15,49,114,0.1)',
-        borderRadius: 2,
-        overflow: 'hidden',
-    },
-    confidenceFill: {
-        height: '100%',
+    checkBadge: {
+        position: 'absolute',
+        top: 1,
+        right: 1,
+        width: 16,
+        height: 16,
+        borderRadius: 8,
         backgroundColor: '#10B981',
-        borderRadius: 2,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
     },
-    resultConfidence: {
-        fontSize: 11,
-        color: '#10B981',
-        fontWeight: '700',
-        minWidth: 32,
+    activeBadge: {
+        position: 'absolute',
+        top: 1,
+        right: 1,
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        backgroundColor: '#FBBF24',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
     },
-    // Popup
     popupContainer: {
         position: 'absolute',
-        top: '35%',
+        top: '30%',
         alignSelf: 'center',
         alignItems: 'center',
         justifyContent: 'center',
@@ -1398,40 +1301,39 @@ const styles = StyleSheet.create({
     },
     popupContent: {
         backgroundColor: 'white',
-        borderRadius: 16,
-        padding: 10,
-        paddingHorizontal: 18,
+        borderRadius: 14,
+        padding: 8,
+        paddingHorizontal: 16,
         alignItems: 'center',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.15,
         shadowRadius: 12,
         elevation: 8,
-        borderWidth: 1.5,
-        borderColor: '#FFD700',
-        minWidth: 80,
+        borderWidth: 2,
+        borderColor: '#FBBF24',
+        minWidth: 60,
     },
     popupSenya: {
-        width: 28,
-        height: 28,
+        width: 22,
+        height: 22,
         marginBottom: 2,
     },
     popupMessage: {
-        fontSize: 15,
+        fontSize: 13,
         fontWeight: '700',
         color: '#0f3172',
         textAlign: 'center',
     },
     popupSubMessage: {
-        fontSize: 10,
+        fontSize: 9,
         color: '#4b7bbb',
         marginTop: 1,
         textAlign: 'center',
     },
-    // Results Modal
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(10, 22, 40, 0.7)',
+        backgroundColor: 'rgba(10,22,40,0.7)',
         justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: 24,
@@ -1467,9 +1369,9 @@ const styles = StyleSheet.create({
         width: 64,
         height: 64,
         borderRadius: 32,
-        backgroundColor: 'rgba(255, 201, 60, 0.15)',
+        backgroundColor: 'rgba(251,191,36,0.12)',
         borderWidth: 2,
-        borderColor: 'rgba(255, 201, 60, 0.4)',
+        borderColor: 'rgba(251,191,36,0.3)',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 12,
@@ -1503,9 +1405,9 @@ const styles = StyleSheet.create({
     starLabelPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(255, 201, 60, 0.15)',
+        backgroundColor: 'rgba(251,191,36,0.12)',
         paddingVertical: 5,
-        paddingHorizontal: 12,
+        paddingHorizontal: 14,
         borderRadius: 999,
         marginTop: 10,
         marginBottom: 14,
@@ -1521,49 +1423,44 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         backgroundColor: '#f7faff',
         borderRadius: 16,
-        paddingVertical: 14,
+        paddingVertical: 12,
         paddingHorizontal: 12,
         marginBottom: 12,
         width: '100%',
         borderWidth: 1,
-        borderColor: 'rgba(15,49,114,0.08)',
+        borderColor: 'rgba(15,49,114,0.06)',
     },
     resultItem: {
         flex: 1,
         alignItems: 'center',
     },
     resultIconWrap: {
-        width: 34,
-        height: 34,
-        borderRadius: 17,
-        backgroundColor: 'rgba(15, 49, 114, 0.08)',
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(15,49,114,0.06)',
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 6,
+        marginBottom: 4,
     },
     resultItemDivider: {
         width: 1,
-        height: 44,
-        backgroundColor: 'rgba(15,49,114,0.1)',
+        height: 40,
+        backgroundColor: 'rgba(15,49,114,0.08)',
         marginHorizontal: 4,
     },
     resultValue: {
-        fontSize: 18,
+        fontSize: 17,
         fontWeight: '800',
         color: '#0f3172',
     },
     resultGridLabel: {
-        fontSize: 10,
+        fontSize: 9,
         color: '#4b7bbb',
         fontWeight: '700',
         textTransform: 'uppercase',
         letterSpacing: 0.5,
-        marginTop: 2,
-    },
-    modalSenya: {
-        width: 80,
-        height: 80,
-        marginBottom: 12,
+        marginTop: 1,
     },
     senyaFeedback: {
         backgroundColor: '#fbfcff',
@@ -1572,13 +1469,13 @@ const styles = StyleSheet.create({
         width: '100%',
         marginBottom: 16,
         borderWidth: 1,
-        borderColor: 'rgba(15,49,114,0.08)',
+        borderColor: 'rgba(15,49,114,0.06)',
     },
     feedbackHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        marginBottom: 8,
+        marginBottom: 6,
     },
     feedbackTitle: {
         fontSize: 13,
@@ -1588,13 +1485,13 @@ const styles = StyleSheet.create({
     feedbackRow: {
         flexDirection: 'row',
         alignItems: 'flex-start',
-        marginBottom: 4,
+        marginBottom: 3,
     },
     feedbackText: {
         flex: 1,
         fontSize: 12,
         color: '#334155',
-        lineHeight: 18,
+        lineHeight: 17,
     },
     continueButton: {
         backgroundColor: '#0f3172',
@@ -1607,7 +1504,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         shadowColor: '#0f3172',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
+        shadowOpacity: 0.2,
         shadowRadius: 10,
         elevation: 6,
     },

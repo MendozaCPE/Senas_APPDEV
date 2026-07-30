@@ -1,170 +1,135 @@
-// app/lesson/streak.tsx
+import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    SafeAreaView,
-    Pressable,
     Animated,
     Dimensions,
-    StatusBar,
+    Easing,
+    Pressable,
+    SafeAreaView,
     ScrollView,
-    DimensionValue
+    StatusBar,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Image } from 'expo-image';
-import { Audio } from 'expo-av';
+import Svg, { Path } from 'react-native-svg';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-interface ConfettiConfig {
-    color: string;
-    top?: DimensionValue;
-    bottom?: DimensionValue;
-    left?: DimensionValue;
-    right?: DimensionValue;
-    size: number;
-    rotate: string;
+// ─── Icons ────────────────────────────────────────────────────────────────────
+function FlameIcon({ size = 20, color = '#fb923c' }: { size?: number; color?: string }) {
+    return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+            <Path d="M12 2c0 6-8 8-8 14a8 8 0 0016 0C20 10 12 8 12 2z" />
+        </Svg>
+    );
 }
 
-// ─── Decorations ─────────────────────────────────────────────────────────────
-const CONFETTI_PIECES: ConfettiConfig[] = [
-    { color: '#F59E0B', top: '8%', left: '8%', size: 10, rotate: '15deg' },
-    { color: '#FBBF24', top: '6%', right: '10%', size: 12, rotate: '-25deg' },
-    { color: '#D97706', top: '20%', left: '20%', size: 8, rotate: '45deg' },
-    { color: '#FDE68A', top: '18%', right: '22%', size: 11, rotate: '10deg' },
-    { color: '#F59E0B', top: '35%', left: '5%', size: 9, rotate: '-15deg' },
-    { color: '#FBBF24', top: '32%', right: '5%', size: 10, rotate: '30deg' },
-];
+function HomeIcon({ size = 16, color = '#fff' }: { size?: number; color?: string }) {
+    return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
+            <Path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <Path d="M9 22V12h6v10" />
+        </Svg>
+    );
+}
+
+
+// ─── Pulsing ring around the streak number ────────────────────────────────────
+function PulseRing({ size, color }: { size: number; color: string }) {
+    const ring1 = useRef(new Animated.Value(1)).current;
+    const ring2 = useRef(new Animated.Value(1)).current;
+    const op1 = useRef(new Animated.Value(0.5)).current;
+    const op2 = useRef(new Animated.Value(0.3)).current;
+
+    useEffect(() => {
+        const pulse = (scale: Animated.Value, op: Animated.Value, delay: number, baseOp: number) => {
+            Animated.loop(
+                Animated.sequence([
+                    Animated.delay(delay),
+                    Animated.parallel([
+                        Animated.timing(scale, { toValue: 1.5, duration: 1200, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+                        Animated.timing(op, { toValue: 0, duration: 1200, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+                    ]),
+                    Animated.parallel([
+                        Animated.timing(scale, { toValue: 1, duration: 0, useNativeDriver: true }),
+                        Animated.timing(op, { toValue: baseOp, duration: 0, useNativeDriver: true }),
+                    ]),
+                ])
+            ).start();
+        };
+        pulse(ring1, op1, 0, 0.5);
+        pulse(ring2, op2, 600, 0.3);
+    }, []);
+
+    return (
+        <>
+            <Animated.View style={{
+                position: 'absolute', width: size, height: size, borderRadius: size / 2,
+                borderWidth: 2, borderColor: color, opacity: op1, transform: [{ scale: ring1 }],
+            }} />
+            <Animated.View style={{
+                position: 'absolute', width: size, height: size, borderRadius: size / 2,
+                borderWidth: 1.5, borderColor: color, opacity: op2, transform: [{ scale: ring2 }],
+            }} />
+        </>
+    );
+}
 
 export default function StreakScreen() {
     const router = useRouter();
     const params = useLocalSearchParams<Record<string, string>>();
-
     const streakDays = parseInt(params.streakDays || '0');
 
-    // ─── Sound Effect ──────────────────────────────────────────────────────
-    const [sound, setSound] = React.useState<Audio.Sound | null>(null);
+    const handleBackToLessons = () => {
+        router.replace('/(tabs)/lessons');
+    };
 
+    // ─── Sound ──────────────────────────────────────────────────────────────────
+    const [sound, setSound] = React.useState<Audio.Sound | null>(null);
     useEffect(() => {
-        // Play streak sound when component mounts
         async function playSound() {
             try {
-                const { sound: newSound } = await Audio.Sound.createAsync(
+                const { sound: s } = await Audio.Sound.createAsync(
                     require('../../assets/music/achievement.mp3'),
-                    {
-                        shouldPlay: true,
-                        isLooping: false,
-                        volume: 0.8,
-                    }
+                    { shouldPlay: true, isLooping: false, volume: 0.8 }
                 );
-                setSound(newSound);
-            } catch (error) {
-                console.error('Failed to play streak sound:', error);
+                setSound(s);
+            } catch (e) {
+                console.error('streak sound failed:', e);
             }
         }
         playSound();
-
-        // Cleanup sound on unmount
-        return () => {
-            if (sound) {
-                sound.unloadAsync();
-            }
-        };
+        return () => { sound?.unloadAsync(); };
     }, []);
 
-    // Animation values
-    const scaleAnim = useRef(new Animated.Value(0.8)).current;
-    const opacityAnim = useRef(new Animated.Value(0)).current;
-    const badgeAnim = useRef(new Animated.Value(0)).current;
-    const todayPulseAnim = useRef(new Animated.Value(1)).current;
+    // ─── Animations ─────────────────────────────────────────────────────────────
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(40)).current;
+    const scaleNum = useRef(new Animated.Value(0.5)).current;
     const floatAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
         Animated.parallel([
-            Animated.spring(scaleAnim, {
-                toValue: 1,
-                friction: 8,
-                tension: 50,
-                useNativeDriver: true,
-            }),
-            Animated.timing(opacityAnim, {
-                toValue: 1,
-                duration: 500,
-                useNativeDriver: true,
-            }),
+            Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+            Animated.timing(slideAnim, { toValue: 0, duration: 500, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+            Animated.spring(scaleNum, { toValue: 1, friction: 6, tension: 60, useNativeDriver: true }),
         ]).start();
 
-        Animated.spring(badgeAnim, {
-            toValue: 1,
-            friction: 5,
-            tension: 40,
-            useNativeDriver: true,
-        }).start();
-
-        // Pulse animation for today's circle
         Animated.loop(
             Animated.sequence([
-                Animated.timing(todayPulseAnim, {
-                    toValue: 1.2,
-                    duration: 1000,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(todayPulseAnim, {
-                    toValue: 1,
-                    duration: 1000,
-                    useNativeDriver: true,
-                }),
-            ])
-        ).start();
-
-        // Floating animation for streak icon
-        Animated.loop(
-            Animated.sequence([
-                Animated.timing(floatAnim, {
-                    toValue: 1,
-                    duration: 2000,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(floatAnim, {
-                    toValue: 0,
-                    duration: 2000,
-                    useNativeDriver: true,
-                }),
+                Animated.timing(floatAnim, { toValue: 1, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+                Animated.timing(floatAnim, { toValue: 0, duration: 2200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
             ])
         ).start();
     }, []);
 
-    const handleGoHome = () => {
-        router.push('/(tabs)/dashboard');
-    };
+    const floatY = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -10] });
 
-    const badgeScale = badgeAnim.interpolate({
-        inputRange: [0, 0.5, 1],
-        outputRange: [0.5, 1.1, 1],
-    });
-
-    const todayScale = todayPulseAnim.interpolate({
-        inputRange: [1, 1.2],
-        outputRange: [1, 1.1],
-    });
-
-    const floatTranslate = floatAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0, -12],
-    });
-
-    const isMilestone = streakDays > 0 && streakDays % 3 === 0;
-
-    const getStreakMessage = () => {
-        if (isMilestone) return `🎉 ${streakDays}-Day Streak!`;
-        return `${streakDays}-Day Streak!`;
-    };
-
+    // ─── Helpers ────────────────────────────────────────────────────────────────
     const getNextMilestone = () => {
         if (streakDays < 3) return 3;
         if (streakDays < 7) return 7;
@@ -172,423 +137,263 @@ export default function StreakScreen() {
         if (streakDays < 30) return 30;
         return null;
     };
-
     const nextMilestone = getNextMilestone();
 
-    // ─── Weekly Calendar View ──────────────────────────────────────────────
+    const getStreakLabel = () => {
+        if (streakDays === 0) return { title: 'Start Your Streak!', sub: 'Complete a lesson every day to build your streak.', emoji: '🌱' };
+        if (streakDays === 1) return { title: "Day 1 — Let's Go!", sub: 'One step at a time. Come back tomorrow!', emoji: '🔥' };
+        if (streakDays < 7) return { title: `${streakDays} Days Strong!`, sub: "You're building an incredible habit.", emoji: '🔥' };
+        if (streakDays < 14) return { title: `${streakDays} Day Streak!`, sub: 'A whole week of dedication — impressive!', emoji: '⚡' };
+        if (streakDays < 30) return { title: `${streakDays} Days on Fire!`, sub: "You're a signing machine. Keep it up!", emoji: '🏆' };
+        return { title: `${streakDays} Day Legend!`, sub: 'You are truly dedicated. Incredible!', emoji: '👑' };
+    };
+    const { title, sub, emoji } = getStreakLabel();
+
+    const RING_SIZE = 148;
+    const flameColor = streakDays >= 7 ? '#F59E0B' : '#fb923c';
+
+    // ─── Weekly calendar ────────────────────────────────────────────────────────
     const getWeekDays = () => {
-        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
         const today = new Date();
-        const currentDay = today.getDay();
+        const dow = today.getDay();
+        const diff = dow === 0 ? 6 : dow - 1;
+        const monday = new Date(today);
+        monday.setDate(today.getDate() - diff);
 
-        const startOfWeek = new Date(today);
-        const diffToMonday = currentDay === 0 ? 6 : currentDay - 1;
-        startOfWeek.setDate(today.getDate() - diffToMonday);
-
-        const weekDays = [];
-        for (let i = 0; i < 7; i++) {
-            const date = new Date(startOfWeek);
-            date.setDate(startOfWeek.getDate() + i);
-            const daysSinceStart = Math.floor((date.getTime() - startOfWeek.getTime()) / (1000 * 60 * 60 * 24));
-
-            weekDays.push({
-                name: days[i],
-                date: date,
-                isToday: date.toDateString() === today.toDateString(),
-                isFuture: date > today,
-                dayOffset: daysSinceStart,
-            });
-        }
-        return weekDays;
+        return names.map((name, i) => {
+            const d = new Date(monday);
+            d.setDate(monday.getDate() + i);
+            return {
+                name,
+                isToday: d.toDateString() === today.toDateString(),
+                isFuture: d > today,
+                offsetFromToday: Math.floor((today.getTime() - d.getTime()) / 86400000),
+            };
+        });
     };
 
     const weekDays = getWeekDays();
-
-    const getDayStatus = (dayOffset: number) => {
-        const today = new Date();
-        const todayDayOffset = weekDays.find(d => d.isToday)?.dayOffset ?? 0;
-        const daysAgo = todayDayOffset - dayOffset;
-        if (daysAgo < 0) return false;
-        return daysAgo < streakDays;
-    };
+    const isDayActive = (offsetFromToday: number) => offsetFromToday >= 0 && offsetFromToday < streakDays;
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-            <ScrollView
-                contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-            >
-                {/* Floating Confetti */}
-                {CONFETTI_PIECES.map((piece, i) => (
-                    <View
-                        key={`confetti-${i}`}
-                        style={[
-                            styles.confetti,
-                            {
-                                backgroundColor: piece.color,
-                                top: piece.top,
-                                bottom: piece.bottom,
-                                left: piece.left,
-                                right: piece.right,
-                                width: piece.size,
-                                height: piece.size,
-                                transform: [{ rotate: piece.rotate }],
-                            }
-                        ]}
-                    />
-                ))}
+        <SafeAreaView style={s.root}>
+            <StatusBar barStyle="dark-content" backgroundColor="#F0F6FF" />
 
-                <Animated.View
-                    style={[
-                        styles.content,
-                        {
-                            opacity: opacityAnim,
-                            transform: [{ scale: scaleAnim }],
-                        },
-                    ]}
-                >
-                    {/* Streak Title */}
-                    <Text style={styles.headerTitle}>
-                        {streakDays > 0 ? getStreakMessage() : 'Start Your Streak!'}
-                    </Text>
+            {/* Top Bar */}
+            <View style={s.topBar}>
+                <Pressable onPress={handleBackToLessons} style={s.closeBtn}>
+                    <Text style={s.closeBtnText}>✕</Text>
+                </Pressable>
+                <Text style={s.logoText}>SEÑAS</Text>
+                <View style={s.streakPill}>
+                    <FlameIcon size={14} color="#fb923c" />
+                    <Text style={s.streakPillText}>{streakDays}</Text>
+                </View>
+            </View>
 
-                    {/* Big Streak Icon with Floating Animation */}
-                    <Animated.View
-                        style={[
-                            styles.streakIconContainer,
-                            { transform: [{ translateY: floatTranslate }] }
-                        ]}
-                    >
-                        <Image
-                            source={require('../../assets/images/img/streak1.png')}
-                            style={styles.streakIcon}
-                            contentFit="contain"
-                        />
+            <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+                <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
 
-                        <Animated.View
-                            style={[
-                                styles.dayCounterBadge,
-                                { transform: [{ scale: badgeScale }] }
-                            ]}
+                    {/* Hero gradient + big fire circle */}
+                    <View style={s.heroSection}>
+                        <LinearGradient
+                            colors={['#0d326b', '#1848c8', '#2563EB']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={s.heroGradient}
                         >
-                            <LinearGradient
-                                colors={['#F59E0B', '#D97706']}
-                                style={styles.dayBadgeGradient}
-                            >
-                                <Text style={styles.dayNumber}>{streakDays}</Text>
-                                <Text style={styles.dayLabel}>DAYS</Text>
-                            </LinearGradient>
-                        </Animated.View>
-                    </Animated.View>
+                            <View style={s.heroEyebrowRow}>
+                                <View style={s.heroEyebrow}>
+                                    <Text style={s.heroEyebrowText}>🔥 STREAK MILESTONE</Text>
+                                </View>
+                                <View style={s.heroBadge}>
+                                    <Text style={s.heroBadgeText}>{emoji} Active</Text>
+                                </View>
+                            </View>
+
+                            <View style={s.ringWrap}>
+                                <PulseRing size={RING_SIZE} color={flameColor} />
+                                <Animated.View style={[s.ringInner, { transform: [{ scale: scaleNum }, { translateY: floatY }] }]}>
+                                    <View style={[s.ringCircle, { borderColor: flameColor }]}>
+                                        <FlameIcon size={30} color={flameColor} />
+                                        <Text style={[s.ringNumber, { color: flameColor }]}>{streakDays}</Text>
+                                        <Text style={s.ringLabel}>{streakDays === 1 ? 'DAY' : 'DAYS'}</Text>
+                                    </View>
+                                </Animated.View>
+                            </View>
+
+                            <Text style={s.heroTitle}>{title}</Text>
+                            <Text style={s.heroSub}>{sub}</Text>
+                        </LinearGradient>
+                    </View>
 
                     {/* Weekly Calendar */}
-                    <View style={styles.calendarContainer}>
-                        <Text style={styles.calendarTitle}>This Week</Text>
-                        <View style={styles.calendarRow}>
-                            {weekDays.map((day, index) => {
-                                const isActive = getDayStatus(day.dayOffset);
+                    <View style={s.card}>
+                        <Text style={s.cardLabel}>📅 THIS WEEK</Text>
+                        <View style={s.calRow}>
+                            {weekDays.map((day, i) => {
+                                const active = isDayActive(day.offsetFromToday);
                                 const isToday = day.isToday;
                                 const isFuture = day.isFuture;
-                                const shouldShowCheck = isActive && !isFuture;
-
                                 return (
-                                    <View key={index} style={styles.calendarDay}>
-                                        <Animated.View
-                                            style={[
-                                                styles.calendarDayCircle,
-                                                shouldShowCheck && styles.calendarDayActive,
-                                                isToday && styles.calendarDayToday,
-                                                isToday && { transform: [{ scale: todayScale }] },
-                                                isFuture && styles.calendarDayFuture,
-                                            ]}
-                                        >
-                                            {shouldShowCheck && (
-                                                <Ionicons
-                                                    name="checkmark"
-                                                    size={16}
-                                                    color={isToday ? "#78350F" : "#FFFFFF"}
-                                                />
-                                            )}
-                                            {isToday && !shouldShowCheck && (
-                                                <View style={styles.todayDot} />
-                                            )}
-                                        </Animated.View>
-                                        <Text
-                                            style={[
-                                                styles.calendarDayName,
-                                                shouldShowCheck && styles.calendarDayNameActive,
-                                                isToday && styles.calendarDayNameToday,
-                                                isFuture && styles.calendarDayNameFuture,
-                                            ]}
-                                        >
-                                            {day.name}
-                                        </Text>
+                                    <View key={i} style={s.calDay}>
+                                        <View style={[
+                                            s.calCircle,
+                                            active && s.calCircleActive,
+                                            isToday && !active && s.calCircleToday,
+                                            isFuture && s.calCircleFuture,
+                                        ]}>
+                                            {active
+                                                ? <Ionicons name="checkmark" size={15} color="#fff" />
+                                                : isToday
+                                                    ? <View style={s.todayDot} />
+                                                    : null}
+                                        </View>
+                                        <Text style={[
+                                            s.calDayName,
+                                            active && s.calDayNameActive,
+                                            isToday && s.calDayNameToday,
+                                            isFuture && s.calDayNameFuture,
+                                        ]}>{day.name}</Text>
                                     </View>
                                 );
                             })}
                         </View>
                     </View>
 
-                    {/* Next Milestone Progress */}
+                    {/* Milestone Progress */}
                     {nextMilestone && (
-                        <View style={styles.milestoneContainer}>
-                            <View style={styles.milestoneHeader}>
-                                <Text style={styles.milestoneLabel}>
-                                    Next Milestone: {nextMilestone} Days
-                                </Text>
-                                <Text style={styles.milestoneProgress}>
-                                    {streakDays}/{nextMilestone}
-                                </Text>
+                        <View style={s.card}>
+                            <View style={s.milestoneTop}>
+                                <Text style={s.cardLabel}>🎯 NEXT GOAL</Text>
+                                <Text style={s.milestonePct}>{streakDays}/{nextMilestone} days</Text>
                             </View>
-                            <View style={styles.milestoneTrack}>
-                                <View
-                                    style={[
-                                        styles.milestoneFill,
-                                        { width: `${(streakDays / nextMilestone) * 100}%` }
-                                    ]}
-                                />
+                            <View style={s.milestoneTrack}>
+                                <View style={[
+                                    s.milestoneFill,
+                                    { width: `${Math.min((streakDays / nextMilestone) * 100, 100)}%` as any }
+                                ]} />
                             </View>
+                            <Text style={s.milestoneHint}>
+                                {nextMilestone - streakDays > 0
+                                    ? `🔥 ${nextMilestone - streakDays} more day${nextMilestone - streakDays === 1 ? '' : 's'} to the ${nextMilestone}-day badge!`
+                                    : '🏆 You hit the milestone!'}
+                            </Text>
                         </View>
                     )}
 
-                    {/* Continue Button */}
-                    <Pressable
-                        style={({ pressed }) => [
-                            styles.homeBtn,
-                            { transform: [{ scale: pressed ? 0.97 : 1 }] }
-                        ]}
-                        onPress={handleGoHome}
-                    >
-                        <LinearGradient
-                            colors={['#F59E0B', '#D97706']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 0 }}
-                            style={styles.homeBtnGradient}
-                        >
-                            <Ionicons name="arrow-forward-circle" size={24} color="#fff" />
-                            <Text style={styles.homeBtnText}>Continue to Dashboard</Text>
-                        </LinearGradient>
-                    </Pressable>
+                    {/* CTA Button */}
+                    <View style={s.ctaSection}>
+                        <Pressable style={s.ctaBtnPrimary} onPress={handleBackToLessons}>
+                            <HomeIcon size={16} color="#fff" />
+                            <Text style={s.ctaBtnText}>Back to Lessons</Text>
+                        </Pressable>
+                    </View>
+
                 </Animated.View>
             </ScrollView>
         </SafeAreaView>
     );
 }
 
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#FFFFFF',
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const s = StyleSheet.create({
+    root: { flex: 1, backgroundColor: '#F0F6FF' },
+    scroll: { paddingBottom: 48 },
+
+    topBar: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        paddingHorizontal: 20, paddingTop: 12, paddingBottom: 10,
     },
-    scrollContent: {
-        flexGrow: 1,
-        paddingBottom: 30,
-        justifyContent: 'center',
+    closeBtn: {
+        width: 32, height: 32, borderRadius: 16,
+        backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+        borderWidth: 1.5, borderColor: '#E2E8F0',
     },
-    confetti: {
-        position: 'absolute',
-        borderRadius: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 1,
-        elevation: 1,
+    closeBtnText: { fontSize: 14, fontWeight: '800', color: '#0f3172' },
+    logoText: { color: '#0f3172', fontSize: 22, fontWeight: '900', letterSpacing: 2 },
+    streakPill: {
+        flexDirection: 'row', alignItems: 'center', gap: 5,
+        backgroundColor: '#FFF7ED', borderRadius: 20, paddingVertical: 5, paddingHorizontal: 12,
+        borderWidth: 1.5, borderColor: '#FDBA74',
     },
-    content: {
-        flex: 1,
-        paddingHorizontal: 24,
-        paddingTop: 20,
-        paddingBottom: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
+    streakPillText: { fontSize: 13, fontWeight: '900', color: '#C2410C' },
+
+    heroSection: {
+        marginHorizontal: 16, marginBottom: 16,
+        borderRadius: 28, overflow: 'hidden',
+        shadowColor: '#0d326b', shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.28, shadowRadius: 20, elevation: 8,
     },
-    headerTitle: {
-        fontSize: 32,
-        fontWeight: '900',
-        color: '#92400E',
-        letterSpacing: 0.5,
-        marginBottom: 4,
+    heroGradient: { padding: 24, alignItems: 'center', paddingBottom: 32 },
+    heroEyebrowRow: {
+        flexDirection: 'row', justifyContent: 'space-between',
+        alignItems: 'center', width: '100%', marginBottom: 20,
     },
-    streakIconContainer: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-        marginVertical: 12,
+    heroEyebrow: {
+        backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 99,
+        paddingVertical: 5, paddingHorizontal: 12,
     },
-    streakIcon: {
-        width: 280,
-        height: 280,
+    heroEyebrowText: { fontSize: 10.5, fontWeight: '900', color: '#FDE68A', letterSpacing: 0.5 },
+    heroBadge: {
+        backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 99,
+        paddingVertical: 5, paddingHorizontal: 12,
     },
-    dayCounterBadge: {
-        position: 'absolute',
-        top: 2,
-        right: 2,
-        borderRadius: 16,
-        overflow: 'hidden',
-        shadowColor: '#F59E0B',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 6,
+    heroBadgeText: { fontSize: 11, fontWeight: '800', color: '#fff' },
+
+    ringWrap: {
+        width: 148, height: 148,
+        alignItems: 'center', justifyContent: 'center', marginBottom: 20,
     },
-    dayBadgeGradient: {
-        paddingHorizontal: 14,
-        paddingVertical: 6,
-        alignItems: 'center',
-        justifyContent: 'center',
+    ringInner: { alignItems: 'center', justifyContent: 'center' },
+    ringCircle: {
+        width: 128, height: 128, borderRadius: 64,
+        backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 3,
+        alignItems: 'center', justifyContent: 'center',
     },
-    dayNumber: {
-        fontSize: 22,
-        fontWeight: '900',
-        color: '#fff',
-        lineHeight: 26,
+    ringNumber: { fontSize: 44, fontWeight: '900', lineHeight: 48 },
+    ringLabel: { fontSize: 11, fontWeight: '900', color: 'rgba(255,255,255,0.7)', letterSpacing: 1.5, marginTop: -2 },
+
+    heroTitle: { fontSize: 22, fontWeight: '900', color: '#fff', textAlign: 'center', marginBottom: 6 },
+    heroSub: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.78)', textAlign: 'center', lineHeight: 19 },
+
+    card: {
+        marginHorizontal: 16, marginBottom: 14,
+        backgroundColor: '#fff', borderRadius: 22, padding: 18,
+        borderWidth: 1.5, borderColor: '#E2E8F0',
+        shadowColor: '#0f3172', shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.06, shadowRadius: 12, elevation: 2,
     },
-    dayLabel: {
-        fontSize: 7,
-        fontWeight: '800',
-        color: 'rgba(255,255,255,0.9)',
-        letterSpacing: 1,
+    cardLabel: { fontSize: 11, fontWeight: '900', color: '#0f3172', letterSpacing: 0.8, marginBottom: 14 },
+
+    calRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
+    calDay: { alignItems: 'center', gap: 6 },
+    calCircle: {
+        width: 36, height: 36, borderRadius: 18,
+        backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center',
     },
-    calendarContainer: {
-        width: '100%',
-        backgroundColor: 'rgba(255,255,255,0.95)',
-        borderRadius: 16,
-        padding: 16,
-        marginVertical: 10,
-        borderWidth: 1,
-        borderColor: 'rgba(251,191,36,0.2)',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 2,
+    calCircleActive: { backgroundColor: '#10B981' },
+    calCircleToday: { backgroundColor: '#EFF6FF', borderWidth: 2, borderColor: '#2563EB' },
+    calCircleFuture: { backgroundColor: '#F1F5F9' },
+    todayDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563EB' },
+    calDayName: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+    calDayNameActive: { color: '#10B981' },
+    calDayNameToday: { color: '#2563EB' },
+    calDayNameFuture: { color: '#CBD5E1', fontWeight: '500' },
+
+    milestoneTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    milestonePct: { fontSize: 13, fontWeight: '800', color: '#2563EB' },
+    milestoneTrack: { height: 10, backgroundColor: '#E2E8F0', borderRadius: 6, overflow: 'hidden', marginBottom: 10 },
+    milestoneFill: { height: '100%', backgroundColor: '#2563EB', borderRadius: 6 },
+    milestoneHint: { fontSize: 12, fontWeight: '600', color: '#64748B', lineHeight: 18 },
+
+    ctaSection: { marginHorizontal: 16, marginTop: 8, marginBottom: 8 },
+    ctaBtnPrimary: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+        width: '100%', backgroundColor: '#1848c8', borderRadius: 60, paddingVertical: 16,
+        shadowColor: '#1848c8', shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.3, shadowRadius: 16, elevation: 8,
     },
-    calendarTitle: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: '#78350F',
-        textAlign: 'center',
-        marginBottom: 12,
-    },
-    calendarRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        alignItems: 'center',
-    },
-    calendarDay: {
-        alignItems: 'center',
-        gap: 4,
-    },
-    calendarDayCircle: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: '#F3F4F6',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 2,
-        borderColor: 'transparent',
-    },
-    calendarDayActive: {
-        backgroundColor: '#F59E0B',
-        borderColor: '#D97706',
-    },
-    calendarDayToday: {
-        borderColor: '#F59E0B',
-        borderWidth: 2.5,
-        backgroundColor: '#FFFBEB',
-    },
-    calendarDayFuture: {
-        backgroundColor: 'rgba(243, 244, 246, 0.5)',
-        borderColor: 'rgba(156, 163, 175, 0.2)',
-    },
-    todayDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: '#F59E0B',
-    },
-    calendarDayName: {
-        fontSize: 10,
-        fontWeight: '600',
-        color: '#9CA3AF',
-    },
-    calendarDayNameActive: {
-        color: '#78350F',
-        fontWeight: '700',
-    },
-    calendarDayNameToday: {
-        color: '#F59E0B',
-        fontWeight: '700',
-    },
-    calendarDayNameFuture: {
-        color: '#D1D5DB',
-        fontWeight: '400',
-    },
-    milestoneContainer: {
-        width: '100%',
-        backgroundColor: 'rgba(255,255,255,0.95)',
-        borderRadius: 16,
-        padding: 16,
-        marginVertical: 8,
-        borderWidth: 1,
-        borderColor: 'rgba(251,191,36,0.2)',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 2,
-    },
-    milestoneHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 8,
-    },
-    milestoneLabel: {
-        fontSize: 13,
-        fontWeight: '700',
-        color: '#78350F',
-    },
-    milestoneProgress: {
-        fontSize: 13,
-        fontWeight: '700',
-        color: '#B45309',
-    },
-    milestoneTrack: {
-        height: 6,
-        backgroundColor: 'rgba(251,191,36,0.15)',
-        borderRadius: 3,
-        overflow: 'hidden',
-    },
-    milestoneFill: {
-        height: '100%',
-        backgroundColor: '#F59E0B',
-        borderRadius: 3,
-    },
-    homeBtn: {
-        width: '100%',
-        height: 54,
-        borderRadius: 27,
-        marginTop: 12,
-        shadowColor: '#F59E0B',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.3,
-        shadowRadius: 12,
-        elevation: 6,
-        overflow: 'hidden',
-    },
-    homeBtnGradient: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 10,
-    },
-    homeBtnText: {
-        fontSize: 17,
-        fontWeight: '700',
-        color: '#fff',
-        letterSpacing: 0.5,
-    },
+    ctaBtnText: { fontSize: 16, fontWeight: '800', color: '#fff' },
 });

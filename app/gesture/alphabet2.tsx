@@ -638,7 +638,7 @@ export default function WebViewCameraScreen() {
             totalWrong: totalWrongAttempts,
         };
     };
-    const GESTURE_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture.html';
+    const GESTURE_URL = 'https://prude-overpay-grievance.ngrok-free.dev/gesture.html';
 
     // Inject CSS to hide detection box and other UI elements from the HTML
     const injectedJavaScript = `

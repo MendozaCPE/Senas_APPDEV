@@ -1,31 +1,30 @@
 // app/gesture/webview-greetings.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
+import { useCameraPermissions } from 'expo-camera';
+import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    SafeAreaView,
-    Pressable,
     ActivityIndicator,
-    Platform,
-    TouchableOpacity,
-    Linking,
-    ScrollView,
+    Animated,
     Dimensions,
     Image,
-    Modal,
-    Animated,
     LayoutAnimation,
+    Linking,
+    Modal,
+    Platform,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
     UIManager,
+    View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import WebView from 'react-native-webview';
-import { Ionicons } from '@expo/vector-icons';
-import { useCameraPermissions } from 'expo-camera';
-import * as WebBrowser from 'expo-web-browser';
-import { Audio } from 'expo-av';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { api } from '../../services/api';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -126,6 +125,18 @@ export default function WebViewGreetingsScreen() {
     const starAnim1 = useRef(new Animated.Value(0)).current;
     const starAnim2 = useRef(new Animated.Value(0)).current;
     const starAnim3 = useRef(new Animated.Value(0)).current;
+
+    // Smooth animated fills for the progress bar and the confidence bar,
+    // so they glide instead of snapping to a new width every update
+    const progressAnim = useRef(new Animated.Value(0)).current;
+    const confidenceAnim = useRef(new Animated.Value(0)).current;
+
+    // Real measured positions/widths of each greeting slot (captured via
+    // onLayout) so the auto-scroll can center accurately even though
+    // greeting names are very different lengths ("HELLO" vs "NICE TO MEET YOU")
+    const greetingNodePositions = useRef<Record<string, number>>({});
+    const greetingNodeWidths = useRef<Record<string, number>>({});
+    const greetingTrackWidth = useRef<number>(0);
 
     const [modelLoading, setModelLoading] = useState(true);
     const [modelLoadAttempts, setModelLoadAttempts] = useState(0);
@@ -229,22 +240,11 @@ export default function WebViewGreetingsScreen() {
         };
     }, []);
 
-    // Auto-scroll to current target
+    // Advance the target, or wrap up the module once everything is complete
     useEffect(() => {
         const target = getCurrentTarget();
         if (target) {
             setCurrentTarget(target);
-            const targetIndex = GREETINGS_LIST.indexOf(target);
-            if (targetIndex >= 0 && scrollViewRef.current) {
-                const slotWidth = 100; // wider for longer greeting names
-                const scrollX = targetIndex * slotWidth - (width - 100) / 2;
-                setTimeout(() => {
-                    scrollViewRef.current?.scrollTo({
-                        x: Math.max(0, scrollX),
-                        animated: true,
-                    });
-                }, 100);
-            }
         } else if (completedGreetings.size === GREETINGS_LIST.length) {
             setIsModuleComplete(true);
             setSenyaMessage(SENYA_MESSAGES.complete);
@@ -260,6 +260,42 @@ export default function WebViewGreetingsScreen() {
             }, 1500);
         }
     }, [completedGreetings]);
+
+    // Smoothly scroll the greeting path so the current target stays centered
+    // in view. Uses each slot's real measured position/width (from onLayout)
+    // instead of a guessed slot width, since greeting names vary a lot in length.
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            const x = greetingNodePositions.current[currentTarget];
+            if (x === undefined || !scrollViewRef.current) return;
+            const nodeWidth = greetingNodeWidths.current[currentTarget] || 76;
+            const visibleWidth = greetingTrackWidth.current || width - 24;
+            const centerOffset = Math.max(0, (visibleWidth / 2) - (nodeWidth / 2));
+            scrollViewRef.current.scrollTo({
+                x: Math.max(0, x - centerOffset),
+                animated: true,
+            });
+        }, 120);
+        return () => clearTimeout(timeout);
+    }, [currentTarget]);
+
+    // Animate the progress bar filling instead of snapping to its new width
+    useEffect(() => {
+        Animated.timing(progressAnim, {
+            toValue: GREETINGS_LIST.length > 0 ? completedGreetings.size / GREETINGS_LIST.length : 0,
+            duration: 400,
+            useNativeDriver: false,
+        }).start();
+    }, [completedGreetings]);
+
+    // Animate the confidence bar so it eases toward the latest reading
+    useEffect(() => {
+        Animated.timing(confidenceAnim, {
+            toValue: confidence,
+            duration: 150,
+            useNativeDriver: false,
+        }).start();
+    }, [confidence]);
 
     // Animate stars when results are shown
     useEffect(() => {
@@ -358,6 +394,10 @@ export default function WebViewGreetingsScreen() {
                 // CORRECT!
                 if (!completedGreetings.has(greeting)) {
                     await playGestureSound();
+
+                    // Animate the greeting path/list transitioning to its new
+                    // completed/active state instead of jumping instantly
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 
                     const newCompleted = new Set(completedGreetings);
                     newCompleted.add(greeting);
@@ -532,7 +572,7 @@ export default function WebViewGreetingsScreen() {
     const preloadModel = async () => {
         try {
             console.log('📦 Pre-loading model...');
-            const response = await fetch('https://swipe-drinking-coral.ngrok-free.dev/models/model.json');
+            const response = await fetch('https://prude-overpay-grievance.ngrok-free.dev/models/model.json');
             if (response.ok) {
                 console.log('✅ Model pre-loaded successfully');
                 // The model will be cached
@@ -548,7 +588,7 @@ export default function WebViewGreetingsScreen() {
     }, []);
 
     // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
-    const GREETINGS_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_greetings.html';
+    const GREETINGS_URL = 'https://prude-overpay-grievance.ngrok-free.dev/gesture_greetings.html';
 
     const injectedJavaScript = `
     (function() {
@@ -872,10 +912,15 @@ export default function WebViewGreetingsScreen() {
                     Progress: {completedGreetings.size}/{GREETINGS_LIST.length}
                 </Text>
                 <View style={styles.progressBar}>
-                    <View
+                    <Animated.View
                         style={[
                             styles.progressFill,
-                            { width: `${(completedGreetings.size / GREETINGS_LIST.length) * 100}%` }
+                            {
+                                width: progressAnim.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: ['0%', '100%'],
+                                })
+                            }
                         ]}
                     />
                 </View>
@@ -964,6 +1009,7 @@ export default function WebViewGreetingsScreen() {
                 style={styles.greetingGridScroll}
                 contentContainerStyle={styles.greetingGridContent}
                 scrollEventThrottle={16}
+                onLayout={(e) => { greetingTrackWidth.current = e.nativeEvent.layout.width; }}
             >
                 {GREETINGS_LIST.map((greeting) => {
                     const isCompleted = completedGreetings.has(greeting);
@@ -978,6 +1024,10 @@ export default function WebViewGreetingsScreen() {
                                 isCompleted && styles.greetingCompleted,
                                 isActive && styles.greetingActive,
                             ]}
+                            onLayout={(e) => {
+                                greetingNodePositions.current[greeting] = e.nativeEvent.layout.x;
+                                greetingNodeWidths.current[greeting] = e.nativeEvent.layout.width;
+                            }}
                         >
                             <Text style={[
                                 styles.greetingChar,
@@ -1008,11 +1058,16 @@ export default function WebViewGreetingsScreen() {
                 {confidence > 0 && (
                     <View style={styles.confidenceContainer}>
                         <View style={styles.confidenceBar}>
-                            <View
+                            <Animated.View
                                 style={[
                                     styles.confidenceFill,
-                                    // FIX: Use the actual state integer directly (e.g., 95%)
-                                    { width: `${Math.round(confidence)}%` }
+                                    {
+                                        width: confidenceAnim.interpolate({
+                                            inputRange: [0, 100],
+                                            outputRange: ['0%', '100%'],
+                                            extrapolate: 'clamp',
+                                        })
+                                    }
                                 ]}
                             />
                         </View>

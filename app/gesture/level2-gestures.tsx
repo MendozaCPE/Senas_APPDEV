@@ -598,7 +598,7 @@ export default function Level2GesturesScreen() {
     }, [isModuleComplete]);
 
     // ─── WEBVIEW CONFIG ────────────────────────────────────────────────────
-    const LEVEL2_URL = 'https://swipe-drinking-coral.ngrok-free.dev/gesture_level2.html';
+    const LEVEL2_URL = 'https://prude-overpay-grievance.ngrok-free.dev/gesture_level2.html';
 
     const injectedJavaScript = `
     (function() {

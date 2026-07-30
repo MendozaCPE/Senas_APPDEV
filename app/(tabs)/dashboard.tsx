@@ -216,6 +216,22 @@ export default function Dashboard() {
     });
   };
 
+  const handleStartDailyChallenge = () => {
+    // Find current active / first uncompleted teacher-provided lesson
+    const currentLesson = teacherLessons.find(lesson => {
+      const isLocked = lesson.is_locked === true || lesson.status === 'locked';
+      const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
+      return !isLocked && !isCompleted;
+    }) || teacherLessons[0];
+
+    const targetId = currentLesson?.lesson_id;
+    if (targetId) {
+      router.push(`/lesson/${targetId}`);
+    } else {
+      router.push('/lessons');
+    }
+  };
+
   const fetchStudentData = async (): Promise<void> => {
     try {
       setLoading(true);
@@ -548,41 +564,6 @@ export default function Dashboard() {
           </View>
         </View>
 
-        {/* Uploaded by Teacher Section - Show Next Recommended Lesson */}
-        {!loadingLessons && carouselLessons.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionHeaderLeft}>
-                <Svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f3172" strokeWidth="2">
-                  <Path d="M12 6v6l4 2" />
-                  <Circle cx="12" cy="12" r="10" />
-                </Svg>
-                <Text style={styles.sectionTitle}> Your Lessons</Text>
-              </View>
-              <Pressable onPress={() => router.push('/lessons')}>
-                <Text style={styles.seeAllText}>See All →</Text>
-              </Pressable>
-            </View>
-
-            <FlatList
-              ref={flatListRef}
-              data={carouselLessons}
-              renderItem={renderTeacherLesson}
-              keyExtractor={(item) => item.lesson_id?.toString() || Math.random().toString()}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              snapToInterval={screenWidth * 0.78 + 14}
-              snapToAlignment="start"
-              decelerationRate="fast"
-              contentContainerStyle={styles.teacherLessonsCarousel}
-              ListEmptyComponent={
-                <View style={styles.emptyLessons}>
-                  <Text style={styles.emptyLessonsText}>No lessons available</Text>
-                </View>
-              }
-            />
-          </View>
-        )}
 
 
 
@@ -675,7 +656,7 @@ export default function Dashboard() {
           ]}
           pointerEvents="box-none"
         >
-          <Pressable style={styles.adBanner} onPress={() => router.push('/assessment')}>
+          <Pressable style={styles.adBanner} onPress={handleStartDailyChallenge}>
             {/* Close button */}
             <Pressable style={styles.adCloseBtn} onPress={dismissPracticeAd} hitSlop={10}>
               <Svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3">
@@ -701,7 +682,7 @@ export default function Dashboard() {
             </View>
 
             {/* Right: CTA button */}
-            <Pressable style={styles.adCtaBtn} onPress={() => router.push('/assessment')}>
+            <Pressable style={styles.adCtaBtn} onPress={handleStartDailyChallenge}>
               <Text style={styles.adCtaText}>Start</Text>
               <Svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#78350f" strokeWidth="3">
                 <Line x1="5" y1="12" x2="19" y2="12" /><Polyline points="12 5 19 12 12 19" />

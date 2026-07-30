@@ -5,25 +5,33 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Animated, Dimensions, Easing,
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Easing,
   Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
-  View
+  View,
 } from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
-import Svg, { Circle, Defs, Line, Path, Polyline, Rect, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
+import Svg, {
+  Circle,
+  Line,
+  Path,
+  Polyline
+} from 'react-native-svg';
 import { api } from '../../services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ─── Brand gradient — same family as the dashboard hero card, kept uniform ──
+// ─── Brand Gradient ──────────────────────────────────────────────────────────
 const BRAND_GRADIENT = ['#0d326b', '#1e4b8f', '#1a6fd4'] as const;
 
-// ─── Colors for slides / stones / stickers ─────────────────────────────────
+// ─── Colors Palette ──────────────────────────────────────────────────────────
 const SLIDE_COLORS = [
   '#2563EB', // Blue
   '#059669', // Green
@@ -37,17 +45,18 @@ const SLIDE_COLORS = [
   '#0D9488', // Teal
 ];
 
-// ─── SOUND EFFECTS ──────────────────────────────────────────────────────────
+// ─── Sound Effects ──────────────────────────────────────────────────────────
 const CORRECT_SOUND = require('../../assets/music/correct.mp3');
 const WRONG_SOUND = require('../../assets/music/wrong.mp3');
 const QUIZ_RESULT_SOUND = require('../../assets/music/quiz-result.mp3');
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Interfaces & Types ──────────────────────────────────────────────────────
 interface Option {
   option_id: number;
   option_text: string;
   is_correct: boolean;
 }
+
 interface Question {
   question_id: number;
   question_number: number;
@@ -57,6 +66,7 @@ interface Question {
   points: number;
   options: Option[];
 }
+
 interface Quiz {
   quiz_id: number;
   title: string;
@@ -65,6 +75,7 @@ interface Quiz {
   passing_score: number;
   questions: Question[];
 }
+
 interface Content {
   content_id: number;
   step_number: number;
@@ -74,6 +85,7 @@ interface Content {
   media_url: string | null;
   gesture_name: string | null;
 }
+
 interface Lesson {
   lesson_id: number;
   title: string;
@@ -92,11 +104,13 @@ interface Lesson {
     quiz_score: number | null;
   } | null;
 }
+
 interface QuizAnswer {
   question_id: number;
   selected_option_id: number | null;
   is_correct: boolean;
 }
+
 interface LeaderboardEntry {
   rank: number;
   student_id: number;
@@ -112,11 +126,24 @@ interface LeaderboardEntry {
 
 // ─── SVG Icons ──────────────────────────────────────────────────────────────
 function CheckCircleIcon({ color = '#10B981', size = 18 }: { color?: string; size?: number }) {
-  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none"><Circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" /><Polyline points="8 12 11 15 16 9" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></Svg>;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" />
+      <Polyline points="8 12 11 15 16 9" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
 }
+
 function XCircleIcon({ color = '#EF4444', size = 18 }: { color?: string; size?: number }) {
-  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none"><Circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" /><Line x1="15" y1="9" x2="9" y2="15" stroke={color} strokeWidth="2.5" strokeLinecap="round" /><Line x1="9" y1="9" x2="15" y2="15" stroke={color} strokeWidth="2.5" strokeLinecap="round" /></Svg>;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="10" stroke={color} strokeWidth="2" />
+      <Line x1="15" y1="9" x2="9" y2="15" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
+      <Line x1="9" y1="9" x2="15" y2="15" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
+    </Svg>
+  );
 }
+
 function StarBurstIcon({ size = 22, color = '#FBBF24' }: { size?: number; color?: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
@@ -124,113 +151,61 @@ function StarBurstIcon({ size = 22, color = '#FBBF24' }: { size?: number; color?
     </Svg>
   );
 }
+
 function HomeIcon({ size = 16, color = '#fff' }: { size?: number; color?: string }) {
-  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><Path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><Polyline points="9 22 9 12 15 12 15 22" /></Svg>;
-}
-function RefreshIcon({ size = 15, color = '#2563EB' }: { size?: number; color?: string }) {
-  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><Path d="M23 4v6h-6" /><Path d="M1 20v-6h6" /><Path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" /></Svg>;
-}
-function BookIcon({ size = 16, color = '#1848c8' }: { size?: number; color?: string }) {
-  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><Path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z" /><Path d="M8 2v4" /><Path d="M16 2v4" /></Svg>;
-}
-function ArrowLeftIcon({ size = 18, color = '#0f3172' }: { size?: number; color?: string }) {
-  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><Path d="M19 12H5M12 19l-7-7 7-7" /></Svg>;
-}
-function ArrowRightIcon({ size = 18, color = '#fff' }: { size?: number; color?: string }) {
-  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><Path d="M5 12h14M12 5l7 7-7 7" /></Svg>;
-}
-function LockIcon({ size = 14, color = '#94A3B8' }: { size?: number; color?: string }) {
-  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"><Rect x="3" y="11" width="18" height="11" rx="2" /><Path d="M7 11V7a5 5 0 0 1 10 0v4" /></Svg>;
-}
-function CloseIcon({ size = 20, color = '#6B7280' }: { size?: number; color?: string }) {
-  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5"><Path d="M18 6L6 18M6 6l12 12" /></Svg>;
-}
-
-interface PodiumBlockProps {
-  rank: number;
-  height: number;
-  width: number;
-}
-
-function Podium3DBlock({ rank, height, width }: PodiumBlockProps) {
-  const dy = rank === 1 ? 12 : 10;
-  const w = width;
-  const h = height;
-
-  let topColors = ['#FFFBEB', '#FDE68A'];
-  let leftColors = ['#FBBF24', '#D97706'];
-  let rightColors = ['#D97706', '#B45309'];
-  let glowColor = '#FBBF24';
-
-  if (rank === 2) {
-    topColors = ['#F8FAFC', '#CBD5E1'];
-    leftColors = ['#94A3B8', '#64748B'];
-    rightColors = ['#64748B', '#475569'];
-    glowColor = '#94A3B8';
-  } else if (rank === 3) {
-    topColors = ['#FFEDD5', '#FED7AA'];
-    leftColors = ['#F97316', '#C2410C'];
-    rightColors = ['#C2410C', '#9A3412'];
-    glowColor = '#F97316';
-  }
-
-  const gradTopId = `gradTop-${rank}`;
-  const gradLeftId = `gradLeft-${rank}`;
-  const gradRightId = `gradRight-${rank}`;
-
   return (
-    <View style={{
-      shadowColor: glowColor,
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.75,
-      shadowRadius: 12,
-      elevation: 10,
-      alignItems: 'center',
-    }}>
-      <Svg width={w} height={h + 2 * dy} viewBox={`0 0 ${w} ${h + 2 * dy}`}>
-        <Defs>
-          <SvgLinearGradient id={gradTopId} x1="0" y1="0" x2="1" y2="1">
-            <Stop offset="0%" stopColor={topColors[0]} />
-            <Stop offset="100%" stopColor={topColors[1]} />
-          </SvgLinearGradient>
-          <SvgLinearGradient id={gradLeftId} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor={leftColors[0]} />
-            <Stop offset="100%" stopColor={leftColors[1]} />
-          </SvgLinearGradient>
-          <SvgLinearGradient id={gradRightId} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor={rightColors[0]} />
-            <Stop offset="100%" stopColor={rightColors[1]} />
-          </SvgLinearGradient>
-        </Defs>
-        <Path d={`M 0 ${dy} L ${w / 2} ${2 * dy} L ${w / 2} ${h + 2 * dy} L 0 ${h + dy} Z`} fill={`url(#${gradLeftId})`} />
-        <Path d={`M ${w / 2} ${2 * dy} L ${w} ${dy} L ${w} ${h + dy} L ${w / 2} ${h + 2 * dy} Z`} fill={`url(#${gradRightId})`} />
-        <Path d={`M 0 ${dy} L ${w / 2} 0 L ${w} ${dy} L ${w / 2} ${2 * dy} Z`} fill={`url(#${gradTopId})`} />
-        <Path d={`M 0 ${dy} L ${w / 2} ${2 * dy} L ${w} ${dy} L ${w / 2} 0 Z`} stroke={glowColor} strokeWidth="1.5" fill="none" opacity="0.95" />
-        <Path d={`M 0 ${dy} L 0 ${h + dy} L ${w / 2} ${h + 2 * dy} L ${w} ${h + dy} L ${w} ${dy}`} stroke={glowColor} strokeWidth="1.5" fill="none" opacity="0.8" />
-        <Path d={`M ${w / 2} ${2 * dy} L ${w / 2} ${h + 2 * dy}`} stroke={glowColor} strokeWidth="1.5" fill="none" opacity="0.8" />
-      </Svg>
-      <View style={{
-        position: 'absolute',
-        top: dy + (h / 3) - 10,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-        <Text style={{
-          fontSize: rank === 1 ? 34 : 26,
-          fontWeight: '900',
-          color: '#fff',
-          textShadowColor: 'rgba(0,0,0,0.3)',
-          textShadowOffset: { width: 1.5, height: 1.5 },
-          textShadowRadius: 3,
-        }}>
-          {rank}
-        </Text>
-      </View>
-    </View>
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
+      <Path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <Polyline points="9 22 9 12 15 12 15 22" />
+    </Svg>
   );
 }
 
-// ─── Bouncy pressable — every tap gets a satisfying little "squish" ─────────
+function RefreshIcon({ size = 15, color = '#2563EB' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
+      <Path d="M23 4v6h-6" />
+      <Path d="M1 20v-6h6" />
+      <Path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </Svg>
+  );
+}
+
+function BookIcon({ size = 16, color = '#1848c8' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
+      <Path d="M4 6h16v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6z" />
+      <Path d="M8 2v4" />
+      <Path d="M16 2v4" />
+    </Svg>
+  );
+}
+
+function ArrowLeftIcon({ size = 18, color = '#0f3172' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M19 12H5M12 19l-7-7 7-7" />
+    </Svg>
+  );
+}
+
+function ArrowRightIcon({ size = 18, color = '#fff' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M5 12h14M12 5l7 7-7 7" />
+    </Svg>
+  );
+}
+
+function CloseIcon({ size = 20, color = '#6B7280' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5">
+      <Path d="M18 6L6 18M6 6l12 12" />
+    </Svg>
+  );
+}
+
+// ─── Helper UI Components ────────────────────────────────────────────────────
 function Bouncy({ children, onPress, style, disabled, hitSlop }: {
   children: React.ReactNode; onPress?: () => void; style?: any; disabled?: boolean; hitSlop?: number;
 }) {
@@ -244,7 +219,6 @@ function Bouncy({ children, onPress, style, disabled, hitSlop }: {
   );
 }
 
-// ─── Drifting cloud puffs — same motif family as the dashboard hero ────────
 function CloudPuffs({ cw, ch }: { cw: number; ch: number }) {
   const w = '#ffffff';
   return (
@@ -255,6 +229,7 @@ function CloudPuffs({ cw, ch }: { cw: number; ch: number }) {
     </>
   );
 }
+
 function DriftingCloud({ top, size = 1, duration = 18000, startX = 0, opacity = 0.16, trackWidth }: {
   top: number; size?: number; duration?: number; startX?: number; opacity?: number; trackWidth: number;
 }) {
@@ -279,15 +254,15 @@ function DriftingCloud({ top, size = 1, duration = 18000, startX = 0, opacity = 
   );
 }
 
-// ─── Adventure Path — the signature progress element ───────────────────────
-// A winding trail of stepping stones (used for both lesson slides and quiz
-// questions) so the child always sees "how far along the journey" they are.
 function AdventurePath({
   count, current, color, onStonePress, completedColor = '#22c55e',
 }: {
   count: number; current: number; color: string; onStonePress?: (i: number) => void; completedColor?: string;
 }) {
   const pulse = useRef(new Animated.Value(1)).current;
+  const scrollRef = useRef<any>(null);
+  const STONE_WIDTH = 38; // stone width + gap
+
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
@@ -299,14 +274,39 @@ function AdventurePath({
     return () => loop.stop();
   }, [current]);
 
+  // Auto-scroll to keep current stone visible
+  useEffect(() => {
+    if (scrollRef.current && count > 0) {
+      const targetX = Math.max(0, current * STONE_WIDTH - SCREEN_WIDTH / 2 + STONE_WIDTH / 2);
+      scrollRef.current.scrollTo({ x: targetX, animated: true });
+    }
+  }, [current, count]);
+
+  const progress = count > 0 ? current / count : 0;
+
   return (
     <View style={s.pathWrap}>
-      <View style={s.pathTrack} />
-      <View style={s.pathRow}>
+      {/* Counter pill */}
+      <View style={s.pathCounterRow}>
+        <View style={[s.pathCounterPill, { backgroundColor: color }]}>
+          <Text style={s.pathCounterText}>{current}/{count}</Text>
+        </View>
+        <View style={s.pathProgressBarTrack}>
+          <View style={[s.pathProgressBarFill, { width: `${Math.round(progress * 100)}%`, backgroundColor: color }]} />
+        </View>
+      </View>
+
+      {/* Scrollable dot row */}
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={s.pathScrollContent}
+        scrollEnabled={count > 8}
+      >
         {Array.from({ length: count }).map((_, i) => {
           const done = i < current;
           const isCurrent = i === current;
-          const wobble = i % 2 === 0 ? -6 : 6;
           const stoneColor = done ? completedColor : isCurrent ? color : '#E2E8F0';
           const Stone = (
             <Animated.View
@@ -314,14 +314,13 @@ function AdventurePath({
                 s.pathStone,
                 {
                   backgroundColor: stoneColor,
-                  marginTop: isCurrent ? 0 : wobble,
                   transform: [{ scale: isCurrent ? pulse : 1 }],
                 },
-                isCurrent && { shadowColor: color, shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 6 },
+                isCurrent && { shadowColor: color, shadowOpacity: 0.55, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 6 },
               ]}
             >
               {done ? (
-                <CheckCircleIcon color="#fff" size={14} />
+                <CheckCircleIcon color="#fff" size={13} />
               ) : (
                 <Text style={[s.pathStoneText, { color: isCurrent ? '#fff' : '#94A3B8' }]}>{i + 1}</Text>
               )}
@@ -335,12 +334,11 @@ function AdventurePath({
             <View key={i} style={s.pathStoneTouchable}>{Stone}</View>
           );
         })}
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
-// ─── Sticker badge — a little rotated "stamp" used across cards ────────────
 function StickerBadge({ label, color, rotate = -6 }: { label: string; color: string; rotate?: number }) {
   return (
     <View style={[s.stickerBadge, { backgroundColor: color, transform: [{ rotate: `${rotate}deg` }] }]}>
@@ -349,7 +347,6 @@ function StickerBadge({ label, color, rotate = -6 }: { label: string; color: str
   );
 }
 
-// ─── Exit Modal ──────────────────────────────────────────────────────────────
 function ExitModal({ visible, onClose, onConfirm }: { visible: boolean; onClose: () => void; onConfirm: () => void }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -372,7 +369,6 @@ function ExitModal({ visible, onClose, onConfirm }: { visible: boolean; onClose:
   );
 }
 
-// ─── Student Detail Modal ──────────────────────────────────────────────────
 function StudentDetailModal({
   visible, onClose, student,
 }: { visible: boolean; onClose: () => void; student: LeaderboardEntry | null }) {
@@ -446,62 +442,54 @@ export default function LessonViewer() {
     score: number; total: number; percentage: number;
     xpEarned: number; totalXp: number; level: number; streakDays: number;
   } | null>(null);
+
   const [showExitModal, setShowExitModal] = useState<boolean>(false);
   const [attemptHistory, setAttemptHistory] = useState<any[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [confettiFired, setConfettiFired] = useState(false);
+  const [showHistory, setShowHistory] = useState<boolean>(false);
+  const [confettiFired, setConfettiFired] = useState<boolean>(false);
+
   const confettiRef = useRef<any>(null);
   const resultsFadeAnim = useRef(new Animated.Value(0)).current;
   const resultsScaleAnim = useRef(new Animated.Value(0.85)).current;
-  // Parallax scroll: score view drifts/fades as leaderboard sheet rises over it
   const parallelScrollY = useRef(new Animated.Value(0)).current;
   const resultsScrollRef = useRef<any>(null);
 
-  // ── Audio state ──
+  // Sound States
   const [correctSound, setCorrectSound] = useState<Audio.Sound | null>(null);
   const [wrongSound, setWrongSound] = useState<Audio.Sound | null>(null);
   const [resultSound, setResultSound] = useState<Audio.Sound | null>(null);
   const [isSoundPlaying, setIsSoundPlaying] = useState<boolean>(false);
 
-  // Leaderboard state
+  // Leaderboard States
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [userRank, setUserRank] = useState<number | null>(null);
-  const [loadingLeaderboard, setLoadingLeaderboard] = useState(false);
+  const [loadingLeaderboard, setLoadingLeaderboard] = useState<boolean>(false);
 
-  // Student detail modal state
+  // Student Detail Modal States
   const [selectedStudent, setSelectedStudent] = useState<LeaderboardEntry | null>(null);
   const [showStudentDetail, setShowStudentDetail] = useState<boolean>(false);
 
-  // Quiz state for step-by-step
+  // Quiz States
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [questionRevealed, setQuestionRevealed] = useState<boolean>(false);
   const [currentScore, setCurrentScore] = useState<number>(0);
 
-  const senyaBounceAnim = useRef(new Animated.Value(0)).current; // 0 = normal, 1 = bounce
-  const senyaShakeAnim = useRef(new Animated.Value(0)).current; // 0 = normal, 1 = shake
+  const senyaBounceAnim = useRef(new Animated.Value(0)).current;
+  const senyaShakeAnim = useRef(new Animated.Value(0)).current;
 
-  // ── Play correct answer sound ──
+  // Sound Handlers
   async function playCorrectSound() {
     try {
       if (isSoundPlaying) return;
       setIsSoundPlaying(true);
-
-      if (correctSound) {
-        await correctSound.unloadAsync();
-      }
+      if (correctSound) await correctSound.unloadAsync();
 
       const { sound } = await Audio.Sound.createAsync(
         CORRECT_SOUND,
-        {
-          shouldPlay: true,
-          isLooping: false,
-          volume: 0.9, // Louder for correct answers (90%)
-        }
+        { shouldPlay: true, isLooping: false, volume: 0.9 }
       );
-
       setCorrectSound(sound);
-
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
           sound.unloadAsync();
@@ -509,34 +497,23 @@ export default function LessonViewer() {
           setIsSoundPlaying(false);
         }
       });
-
     } catch (error) {
       console.error('Failed to play correct sound:', error);
       setIsSoundPlaying(false);
     }
   }
 
-  // ── Play wrong answer sound ──
   async function playWrongSound() {
     try {
       if (isSoundPlaying) return;
       setIsSoundPlaying(true);
-
-      if (wrongSound) {
-        await wrongSound.unloadAsync();
-      }
+      if (wrongSound) await wrongSound.unloadAsync();
 
       const { sound } = await Audio.Sound.createAsync(
         WRONG_SOUND,
-        {
-          shouldPlay: true,
-          isLooping: false,
-          volume: 0.6, // Lower for wrong answers (60%)
-        }
+        { shouldPlay: true, isLooping: false, volume: 0.6 }
       );
-
       setWrongSound(sound);
-
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
           sound.unloadAsync();
@@ -544,38 +521,27 @@ export default function LessonViewer() {
           setIsSoundPlaying(false);
         }
       });
-
     } catch (error) {
       console.error('Failed to play wrong sound:', error);
       setIsSoundPlaying(false);
     }
   }
 
-  // ── Play quiz result sound ──
   async function playResultSound() {
     try {
-      if (resultSound) {
-        await resultSound.unloadAsync();
-      }
+      if (resultSound) await resultSound.unloadAsync();
 
       const { sound } = await Audio.Sound.createAsync(
         QUIZ_RESULT_SOUND,
-        {
-          shouldPlay: true,
-          isLooping: false,
-          volume: 0.8,
-        }
+        { shouldPlay: true, isLooping: false, volume: 0.8 }
       );
-
       setResultSound(sound);
-
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
           sound.unloadAsync();
           setResultSound(null);
         }
       });
-
     } catch (error) {
       console.error('Failed to play result sound:', error);
     }
@@ -592,7 +558,6 @@ export default function LessonViewer() {
   };
 
   const animateSenyaIncorrect = () => {
-    // Reset and shake - gentler, more playful
     senyaShakeAnim.setValue(0);
     Animated.sequence([
       Animated.timing(senyaShakeAnim, { toValue: 1, duration: 50, useNativeDriver: true }),
@@ -652,30 +617,20 @@ export default function LessonViewer() {
     fetchAttemptHistory();
     fetchLeaderboard();
 
-    // ── Cleanup sounds on unmount ──
     return () => {
-      if (correctSound) {
-        correctSound.unloadAsync();
-      }
-      if (wrongSound) {
-        wrongSound.unloadAsync();
-      }
-      if (resultSound) {
-        resultSound.unloadAsync();
-      }
+      if (correctSound) correctSound.unloadAsync();
+      if (wrongSound) wrongSound.unloadAsync();
+      if (resultSound) resultSound.unloadAsync();
     };
   }, []);
 
   useEffect(() => {
     if (quizSubmitted && quizResult) {
-      // ── Play result sound ──
       playResultSound();
 
-      // Reset animation values BEFORE starting new animation
       resultsFadeAnim.setValue(0);
       resultsScaleAnim.setValue(0.85);
 
-      // Start the animation
       Animated.parallel([
         Animated.timing(resultsFadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
         Animated.spring(resultsScaleAnim, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
@@ -687,11 +642,9 @@ export default function LessonViewer() {
           setConfettiFired(true);
         }, 400);
       }
-      // Refresh leaderboard after quiz
       fetchLeaderboard();
     }
   }, [quizSubmitted, quizResult]);
-
 
   const updateProgress = async (step: number, completed: boolean = false): Promise<void> => {
     try {
@@ -724,7 +677,6 @@ export default function LessonViewer() {
     const currentQ = questions[currentQuestionIndex];
     const isCorrect = optionIndex === currentQ?.options.findIndex(o => o.is_correct);
 
-    // ── Play the appropriate sound ──
     if (isCorrect) {
       await playCorrectSound();
       animateSenyaCorrect();
@@ -733,7 +685,6 @@ export default function LessonViewer() {
       animateSenyaIncorrect();
     }
 
-    // Store the selected option ID
     const selectedOptionId = currentQ?.options[optionIndex]?.option_id;
     setQuizAnswers(prev => ({
       ...prev,
@@ -763,9 +714,7 @@ export default function LessonViewer() {
     const totalPoints = questions.length;
     const percentage = Math.round((score / totalPoints) * 100);
 
-    // Build answers with actual selected options
     const answers: QuizAnswer[] = questions.map((q, index) => {
-      // Find the selected option for this question
       const selectedOptionId = quizAnswers[index] ?? null;
       const isCorrect = selectedOptionId !== null &&
         q.options[selectedOptionId]?.is_correct === true;
@@ -812,7 +761,7 @@ export default function LessonViewer() {
     }
   };
 
-  // ─── Loading / Error ─────────────────────────────────────────────────────
+  // ─── Loading / Error Views ───────────────────────────────────────────────
   if (loading) {
     return (
       <SafeAreaView style={s.loadingContainer}>
@@ -839,19 +788,17 @@ export default function LessonViewer() {
   const totalSlides = lesson.total_steps;
   const isQuizSlide = currentSlide >= lesson.contents.length;
   const passed = (quizResult?.percentage || 0) >= 60;
-  const isPerfect = (quizResult?.percentage || 0) === 100;
   const currentQuestion = lesson.quiz?.questions[currentQuestionIndex];
   const slideColor = SLIDE_COLORS[currentSlide % SLIDE_COLORS.length];
   const questionColor = SLIDE_COLORS[currentQuestionIndex % SLIDE_COLORS.length];
 
-  // ─── RENDER: Content Slides ──────────────────────────────────────────────
+  // ─── Render Content Slides ─────────────────────────────────────────────────
   const renderContentSlides = () => {
     const content = lesson.contents[currentSlide];
     const isLastSlide = currentSlide === lesson.contents.length - 1;
 
     return (
       <>
-        {/* Adventure hero — gradient banner, same brand family as the dashboard */}
         <View style={s.heroWrap}>
           <LinearGradient colors={BRAND_GRADIENT} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroCard}>
             <DriftingCloud top={8} size={1.2} duration={19000} startX={0} opacity={0.18} trackWidth={SCREEN_WIDTH - 32} />
@@ -866,7 +813,6 @@ export default function LessonViewer() {
           </LinearGradient>
         </View>
 
-        {/* Signature progress element */}
         <AdventurePath
           count={lesson.contents.length}
           current={currentSlide}
@@ -874,14 +820,12 @@ export default function LessonViewer() {
           onStonePress={(i) => handleSlideChange(i)}
         />
 
-        {/* Content card with sticker badge */}
         <View style={[s.contentCard, { borderColor: `${slideColor}33` }]}>
           <StickerBadge label={`STEP ${currentSlide + 1}`} color={slideColor} />
           <Text style={[s.contentTitle, { color: slideColor }]}>{content.title}</Text>
           <Text style={s.contentBody}>{content.content_text}</Text>
         </View>
 
-        {/* Speech bubble tip from Senya */}
         <View style={s.speechRow}>
           <Image source={require('../../assets/images/img/senyas_logo.png')} style={s.speechAvatar} contentFit="contain" />
           <View style={s.speechBubble}>
@@ -894,7 +838,6 @@ export default function LessonViewer() {
           </View>
         </View>
 
-        {/* Big chunky navigation */}
         <View style={s.navRow}>
           {currentSlide > 0 && (
             <Bouncy style={s.ghostBtn} onPress={() => handleSlideChange(currentSlide - 1)}>
@@ -924,7 +867,7 @@ export default function LessonViewer() {
     );
   };
 
-  // ─── RENDER: Quiz Step-by-Step ──────────────────────────────────────────
+  // ─── Render Quiz View ──────────────────────────────────────────────────────
   const renderQuiz = () => {
     if (!lesson.quiz || !currentQuestion) return null;
 
@@ -934,7 +877,6 @@ export default function LessonViewer() {
 
     const isCorrect = selectedOption !== null && selectedOption === currentQuestion.options.findIndex(o => o.is_correct);
     const totalQuestions = lesson.quiz.questions.length;
-    const optionLabels = ['🅰️', '🅱️', '🅲️', '🅳️'];
 
     return (
       <>
@@ -943,7 +885,6 @@ export default function LessonViewer() {
           <Text style={s.backToLessonText}>Back to Lesson</Text>
         </Bouncy>
 
-        {/* Quiz hero — colorful gradient banner per question, keeps brand shape */}
         <View style={s.heroWrap}>
           <LinearGradient colors={[questionColor, shadeColor(questionColor, -25)]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.quizHeroCard}>
             <View style={s.heroTopRow}>
@@ -1032,7 +973,7 @@ export default function LessonViewer() {
     );
   };
 
-  // ─── RENDER: Results Sub-Views ──────────────────────────────────────────
+  // ─── Render Results Views ──────────────────────────────────────────────────
   const renderScoreView = () => {
     const score = quizResult?.score || 0;
     const total = quizResult?.total || 0;
@@ -1170,6 +1111,7 @@ export default function LessonViewer() {
           </View>
         )}
 
+        {/* Podium Row */}
         <View style={s.podiumRow}>
           {/* Rank 2 */}
           <View style={s.podiumCol}>
@@ -1263,30 +1205,27 @@ export default function LessonViewer() {
           ) : rest.length === 0 ? (
             <Text style={s.noRankingsText}>Only the top 3 are on the board so far!</Text>
           ) : (
-            rest.map((r, index) => {
-              const itemRank = r.rank;
-              return (
-                <Pressable
-                  key={r.student_id}
-                  style={[
-                    s.leaderboardListItem,
-                    r.is_me && s.leaderboardListItemMe,
-                    index < rest.length - 1 && s.leaderboardListItemBorder,
-                  ]}
-                  onPress={() => handleStudentPress(r)}
-                >
-                  <View style={s.listRankCircle}><Text style={s.listRankText}>{itemRank}</Text></View>
-                  <View style={[s.listAvatar, r.is_me && { backgroundColor: '#1848c8' }]}>
-                    <Text style={s.listAvatarText}>{r.initials}</Text>
-                  </View>
-                  <View style={s.listNameContainer}>
-                    <Text style={[s.listName, r.is_me && s.listNameMe]}>{r.is_me ? 'You' : r.name}</Text>
-                    <Text style={s.listAttempts}>{r.attempts} {r.attempts === 1 ? 'try' : 'tries'}</Text>
-                  </View>
-                  <Text style={[s.listScoreText, r.is_me && s.listScoreTextMe]}>{r.best_score}%</Text>
-                </Pressable>
-              );
-            })
+            rest.map((r, index) => (
+              <Pressable
+                key={r.student_id}
+                style={[
+                  s.leaderboardListItem,
+                  r.is_me && s.leaderboardListItemMe,
+                  index < rest.length - 1 && s.leaderboardListItemBorder,
+                ]}
+                onPress={() => handleStudentPress(r)}
+              >
+                <View style={s.listRankCircle}><Text style={s.listRankText}>{r.rank}</Text></View>
+                <View style={[s.listAvatar, r.is_me && { backgroundColor: '#1848c8' }]}>
+                  <Text style={s.listAvatarText}>{r.initials}</Text>
+                </View>
+                <View style={s.listNameContainer}>
+                  <Text style={[s.listName, r.is_me && s.listNameMe]}>{r.is_me ? 'You' : r.name}</Text>
+                  <Text style={s.listAttempts}>{r.attempts} {r.attempts === 1 ? 'try' : 'tries'}</Text>
+                </View>
+                <Text style={[s.listScoreText, r.is_me && s.listScoreTextMe]}>{r.best_score}%</Text>
+              </Pressable>
+            ))
           )}
 
           <Pressable style={[s.historyToggleBtn, { marginTop: 18 }]} onPress={() => setShowHistory(!showHistory)}>
@@ -1387,11 +1326,12 @@ export default function LessonViewer() {
                     xpEarned: String(xpEarned),
                     totalXp: String(totalXp),
                     level: String(currentLevel),
-                    levelName: levelName,
+                    levelName,
                     previousXp: String(previousXp),
                     nextLevelXp: String(nextLevelXp),
                     showStreak: 'true',
                     streakDays: String(streakDays),
+                    lessonId: String(id),
                   },
                 });
               } else {
@@ -1402,7 +1342,8 @@ export default function LessonViewer() {
                     xpEarned: String(xpEarned),
                     totalXp: String(totalXp),
                     level: String(currentLevel),
-                    levelName: levelName,
+                    levelName,
+                    lessonId: String(id),
                   },
                 });
               }
@@ -1495,7 +1436,7 @@ export default function LessonViewer() {
   );
 }
 
-// ─── Small color helper (kept UI-only, no backend impact) ──────────────────
+// ─── Utility Helper ──────────────────────────────────────────────────────────
 function shadeColor(hex: string, percent: number): string {
   const num = parseInt(hex.replace('#', ''), 16);
   const amt = Math.round(2.55 * percent);
@@ -1505,17 +1446,17 @@ function shadeColor(hex: string, percent: number): string {
   return `#${(0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1)}`;
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// ─── Stylesheet ──────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1 },
 
-  // ── Confetti Wrapper ──
+  // Confetti Overlay
   confettiWrapper: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     zIndex: 9999, pointerEvents: 'none', elevation: 9999,
   },
 
-  // Loading
+  // Loading & Errors
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0F6FF' },
   loadingInner: { alignItems: 'center', gap: 12 },
   loadingText: { fontSize: 15, fontWeight: '700', color: '#4B7FCC' },
@@ -1526,7 +1467,7 @@ const s = StyleSheet.create({
 
   overlay: { flex: 1, backgroundColor: 'rgba(13,50,107,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 },
 
-  // Exit modal
+  // Exit Modal
   exitModal: { width: '88%', maxWidth: 340, backgroundColor: '#fff', borderRadius: 32, padding: 28, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.18, shadowRadius: 48, elevation: 24 },
   exitEmoji: { fontSize: 44, marginBottom: 10 },
   exitTitle: { fontSize: 20, fontWeight: '900', color: '#0f3172', marginBottom: 8, textAlign: 'center' },
@@ -1537,17 +1478,17 @@ const s = StyleSheet.create({
   exitConfirmBtn: { flex: 1, paddingVertical: 14, backgroundColor: 'rgba(220,38,38,0.10)', borderRadius: 40, alignItems: 'center' },
   exitConfirmText: { fontSize: 14, fontWeight: '800', color: '#DC2626' },
 
-  // Layout
+  // Layout Structure
   moduleScroll: { padding: 16, paddingBottom: 60 },
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
   logoText: { color: '#0f3172', fontSize: 22, fontWeight: '900', letterSpacing: 2 },
   exitBtn: { backgroundColor: '#fff', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#EEF2F7' },
 
-  // Back to Lesson button
+  // Navigation Extras
   backToLessonBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 4, marginBottom: 4, alignSelf: 'flex-start' },
   backToLessonText: { fontSize: 14, fontWeight: '700', color: '#1848c8' },
 
-  // ── Hero adventure banner ──
+  // Hero Card Section
   heroWrap: { borderRadius: 28, overflow: 'hidden', marginBottom: 18, shadowColor: '#0d326b', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.28, shadowRadius: 20, elevation: 8 },
   heroCard: { padding: 20, minHeight: 160, overflow: 'hidden' },
   quizHeroCard: { padding: 20, minHeight: 140, overflow: 'hidden' },
@@ -1562,41 +1503,44 @@ const s = StyleSheet.create({
   quizQuestionText: { fontSize: 17, fontWeight: '800', color: '#fff', lineHeight: 24 },
   questionMedia: { width: '100%', height: 140, borderRadius: 14, marginTop: 12 },
 
-  // ── Adventure Path (signature progress) ──
-  pathWrap: { marginBottom: 16, paddingHorizontal: 4, position: 'relative', height: 56, justifyContent: 'center' },
-  pathTrack: { position: 'absolute', left: 20, right: 20, top: '50%', height: 4, borderRadius: 4, backgroundColor: '#DCE7FB' },
-  pathRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  // Path Tracking
+  pathWrap: { marginBottom: 14, paddingHorizontal: 0 },
+  pathCounterRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8, paddingHorizontal: 4 },
+  pathCounterPill: { borderRadius: 20, paddingVertical: 3, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
+  pathCounterText: { fontSize: 11, fontWeight: '900', color: '#fff', letterSpacing: 0.3 },
+  pathProgressBarTrack: { flex: 1, height: 6, borderRadius: 6, backgroundColor: '#DCE7FB', overflow: 'hidden' },
+  pathProgressBarFill: { height: 6, borderRadius: 6 },
+  pathScrollContent: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4, paddingVertical: 6 },
   pathStoneTouchable: { alignItems: 'center', justifyContent: 'center' },
   pathStone: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#fff' },
   pathStoneText: { fontSize: 12, fontWeight: '900' },
 
-  // ── Content card + sticker ──
+  // Content Cards
   contentCard: { backgroundColor: '#fff', borderWidth: 2, borderRadius: 24, padding: 20, marginBottom: 14, minHeight: 160, shadowColor: '#0f3172', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 14, elevation: 3 },
   stickerBadge: { alignSelf: 'flex-start', borderRadius: 10, paddingVertical: 5, paddingHorizontal: 12, marginBottom: 12, marginLeft: -4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 3 },
   stickerBadgeText: { fontSize: 10.5, fontWeight: '900', color: '#fff', letterSpacing: 0.5 },
   contentTitle: { fontSize: 19, fontWeight: '900', marginBottom: 10 },
   contentBody: { fontSize: 15, color: '#334155', lineHeight: 24, fontWeight: '500' },
 
-  // ── Speech bubble ──
+  // Mascot Speech Bubble
   speechRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginBottom: 18 },
   speechAvatar: { width: 52, height: 52, flexShrink: 0 },
   speechBubble: { flex: 1, backgroundColor: '#FFF7E6', borderWidth: 1.5, borderColor: '#FDE9B8', borderRadius: 18, borderBottomLeftRadius: 4, padding: 14, position: 'relative' },
   speechTail: { position: 'absolute', left: -8, bottom: 10, width: 0, height: 0, borderTopWidth: 8, borderTopColor: 'transparent', borderBottomWidth: 8, borderBottomColor: 'transparent', borderRightWidth: 10, borderRightColor: '#FFF7E6' },
   speechText: { fontSize: 13, color: '#92400E', fontWeight: '700', lineHeight: 19 },
 
-  // ── Navigation ──
+  // Controls & Action Buttons
   navRow: { flexDirection: 'row', gap: 10 },
-  primaryBtn: { flex: 1, flexDirection: 'row', gap: 8, backgroundColor: '#1848c8', borderRadius: 60, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 10 },
+  primaryBtn: { flex: 1, minWidth: 150, flexDirection: 'row', gap: 8, backgroundColor: '#1848c8', borderRadius: 60, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', shadowColor: '#1848c8', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 10 },
   primaryBtnText: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  ghostBtn: { flex: 1, flexDirection: 'row', gap: 6, backgroundColor: '#fff', borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 60, paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
+  ghostBtn: { flex: 1, minWidth: 100, flexDirection: 'row', gap: 6, backgroundColor: '#fff', borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 60, paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
   ghostBtnText: { fontSize: 16, fontWeight: '800', color: '#0f3172' },
 
-  // ── Quiz options ──
+  // Question Options & Feedback
   optionCard: { flexDirection: 'row', alignItems: 'center', gap: 14, borderWidth: 2, borderRadius: 20, padding: 15, marginBottom: 10 },
   optionCircle: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   optionLetter: { fontSize: 15, fontWeight: '900' },
   optionText: { flex: 1, fontSize: 15, fontWeight: '700', lineHeight: 21 },
-
   feedbackRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginVertical: 14 },
   senyaFeedback: { width: 76, height: 76, flexShrink: 0 },
   feedbackBubble: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 7, backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: '#EEF2F7', borderRadius: 18, padding: 13 },
@@ -1604,7 +1548,7 @@ const s = StyleSheet.create({
   feedbackWrong: { backgroundColor: '#FEF2F2', borderColor: '#fecaca' },
   feedbackText: { flex: 1, fontSize: 13, fontWeight: '600', color: '#0f3172', lineHeight: 19 },
 
-  // ── Results ──
+  // Results Screen
   resultsContainer: { gap: 8 },
   scoreCard: { backgroundColor: '#fff', borderRadius: 28, alignItems: 'center', paddingVertical: 26, paddingHorizontal: 20, shadowColor: '#0d326b', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 20, elevation: 6 },
   scoreEmoji: { fontSize: 34, marginBottom: 2 },
@@ -1621,7 +1565,7 @@ const s = StyleSheet.create({
   loadingLeaderboardText: { fontSize: 14, color: '#6B7280' },
   noRankingsText: { fontSize: 14, color: '#6B7280', textAlign: 'center', paddingVertical: 20 },
 
-  // History
+  // Attempt History Section
   historyToggleBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#EFF6FF', borderRadius: 16, paddingVertical: 13, paddingHorizontal: 16, borderWidth: 1.5, borderColor: '#BFDBFE' },
   historyToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   historyToggleText: { fontSize: 14, fontWeight: '700', color: '#1D4ED8' },
@@ -1640,6 +1584,7 @@ const s = StyleSheet.create({
   scoreCircleText: { fontSize: 28, fontWeight: '900' },
   scoreCircleSub: { fontSize: 10, fontWeight: '800', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5 },
 
+  // Leaderboard Layout & Podium
   leaderboardContainer: { flex: 1 },
   leaderboardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 },
   leaderboardHeaderTitle: { fontSize: 22, fontWeight: '900', color: '#fff', textAlign: 'center', letterSpacing: 0.5 },
@@ -1702,7 +1647,7 @@ const s = StyleSheet.create({
   smallGhostBtn: { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: 'rgba(15,30,80,0.08)' },
   smallBtnText: { fontSize: 13, fontWeight: '800', color: '#0f3172' },
 
-  // ── Student Detail Modal ──
+  // Student Detail Modal
   studentDetailModal: { width: '85%', maxWidth: 340, backgroundColor: '#fff', borderRadius: 32, padding: 24, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.2, shadowRadius: 48, elevation: 24 },
   studentDetailClose: { position: 'absolute', top: 16, right: 16, padding: 4 },
   studentDetailAvatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#9CA3AF', alignItems: 'center', justifyContent: 'center', marginTop: 4, marginBottom: 12, borderWidth: 3, borderColor: '#E5E7EB' },
