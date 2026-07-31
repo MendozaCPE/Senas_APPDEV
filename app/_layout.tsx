@@ -1,10 +1,12 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import NetworkBanner from '../components/NetworkBanner';
 
 export default function RootLayout() {
   return (
     <>
       <StatusBar style="dark" />
+      <NetworkBanner />
       <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="onboarding" />
@@ -21,7 +23,6 @@ export default function RootLayout() {
         <Stack.Screen name="gesture/webview-camera" options={{ headerShown: false }} />
         <Stack.Screen name="module-quiz/[id]" options={{ headerShown: false }} />
       </Stack>
-
     </>
   );
 }

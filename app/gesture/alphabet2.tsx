@@ -1,30 +1,29 @@
 // app/gesture/alphabet2.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Audio } from 'expo-av';
+import { useCameraPermissions } from 'expo-camera';
+import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-    View,
-    Text,
-    StyleSheet,
-    SafeAreaView,
-    Pressable,
     ActivityIndicator,
-    Platform,
-    TouchableOpacity,
-    Linking,
-    ScrollView,
+    Animated,
     Dimensions,
     Image,
+    Linking,
     Modal,
-    Animated,
-    LayoutAnimation,
+    Platform,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
     UIManager,
+    View
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import WebView from 'react-native-webview';
-import { Ionicons } from '@expo/vector-icons';
-import { useCameraPermissions } from 'expo-camera';
-import * as WebBrowser from 'expo-web-browser';
-import { Audio } from 'expo-av';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../../services/api';
 
 // Enable LayoutAnimation for Android

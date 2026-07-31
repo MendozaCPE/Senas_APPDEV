@@ -2,8 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Dimensions, Easing, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Dimensions, Easing, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import Svg, { Circle, Path, Polyline } from 'react-native-svg';
 import { api } from '../../services/api';
@@ -285,6 +285,13 @@ export default function Achievements() {
   const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
   const [showConfetti, setShowConfetti] = useState(false);
   const [latestEarnedBadgeName, setLatestEarnedBadgeName] = useState<string>('First Step');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchStudentData();
+    setRefreshing(false);
+  }, []);
 
   useEffect(() => {
     fetchStudentData();
@@ -352,23 +359,26 @@ export default function Achievements() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-
-        {/* ── Top Bar — matches dashboard ── */}
-        <View style={styles.topBar}>
-          <Text style={styles.logoText}>SEÑAS</Text>
-          <View style={styles.topBarRight}>
-            <View style={styles.statPill}>
-              <StarIcon size={13} color="#F59E0B" />
-              <Text style={styles.statPillText}>{totalXP} XP</Text>
-            </View>
-            <View style={styles.streakBadge}>
-              <FlameIcon size={14} color="#fb923c" />
-              <Text style={styles.streakText}>{streakDays}</Text>
-            </View>
+      {/* ── Top Bar — FIXED outside ScrollView so it stays still during refresh ── */}
+      <View style={styles.topBar}>
+        <Text style={styles.logoText}>SEÑAS</Text>
+        <View style={styles.topBarRight}>
+          <View style={styles.streakBadge}>
+            <Svg width="15" height="15" viewBox="0 0 24 24" fill="#fb923c">
+              <Path d="M12 2c0 6-8 8-8 14a8 8 0 0016 0C20 10 12 8 12 2z" />
+            </Svg>
+            <Text style={styles.streakText}>{streakDays}</Text>
           </View>
         </View>
+      </View>
 
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1e4b8f" />
+        }
+      >
         {/* ── Hero Banner — same blue gradient & drifting clouds as dashboard ── */}
         <View style={styles.section}>
           <View style={styles.bannerWrapper}>

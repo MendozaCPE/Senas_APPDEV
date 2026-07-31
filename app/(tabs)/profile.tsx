@@ -2,13 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Animated,
   Dimensions,
   Easing,
   Modal,
   Pressable,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -458,6 +459,14 @@ export default function Profile() {
     { label: 'About SEÑAS', Icon: InfoIcon },
   ];
 
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchProfileData();
+    setRefreshing(false);
+  }, []);
+
   useEffect(() => {
     fetchProfileData();
   }, []);
@@ -601,22 +610,26 @@ export default function Profile() {
         }}
       />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-
-        {/* ── Top Bar — matches dashboard / achievements ── */}
-        <View style={styles.topBar}>
-          <Text style={styles.logoText}>SEÑAS</Text>
-          <View style={styles.topBarRight}>
-            <View style={styles.statPill}>
-              <EnergyIcon size={13} color="#F59E0B" />
-              <Text style={styles.statPillText}>{totalXp} XP</Text>
-            </View>
-            <View style={styles.streakBadge}>
-              <FlameIcon size={14} color="#fb923c" />
-              <Text style={styles.streakText}>{streakDays}</Text>
-            </View>
+      {/* ── Top Bar — FIXED outside ScrollView so it stays still during refresh ── */}
+      <View style={styles.topBar}>
+        <Text style={styles.logoText}>SEÑAS</Text>
+        <View style={styles.topBarRight}>
+          <View style={styles.streakBadge}>
+            <Svg width="15" height="15" viewBox="0 0 24 24" fill="#fb923c">
+              <Path d="M12 2c0 6-8 8-8 14a8 8 0 0016 0C20 10 12 8 12 2z" />
+            </Svg>
+            <Text style={styles.streakText}>{streakDays}</Text>
           </View>
         </View>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1e4b8f" />
+        }
+      >
 
         {/* ── ID Card — playful sticker-style card, no gradient hero ── */}
         <View style={styles.section}>

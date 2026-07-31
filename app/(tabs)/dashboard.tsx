@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -11,6 +11,7 @@ import {
   Easing,
   FlatList,
   Pressable,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -187,6 +188,13 @@ export default function Dashboard() {
   const [levelName, setLevelName] = useState<string>('Novice Signer');
   const [showPracticeAd, setShowPracticeAd] = useState<boolean>(!practiceAdDismissed);
   const adSlideAnim = useRef(new Animated.Value(120)).current;
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([fetchStudentData(), fetchTeacherLessons()]);
+    setRefreshing(false);
+  }, []);
 
   useEffect(() => {
     fetchStudentData();
@@ -217,19 +225,8 @@ export default function Dashboard() {
   };
 
   const handleStartDailyChallenge = () => {
-    // Find current active / first uncompleted teacher-provided lesson
-    const currentLesson = teacherLessons.find(lesson => {
-      const isLocked = lesson.is_locked === true || lesson.status === 'locked';
-      const isCompleted = lesson.status === 'completed' || lesson.progress?.lesson_completed;
-      return !isLocked && !isCompleted;
-    }) || teacherLessons[0];
-
-    const targetId = currentLesson?.lesson_id;
-    if (targetId) {
-      router.push(`/lesson/${targetId}`);
-    } else {
-      router.push('/lessons');
-    }
+    // Navigate to the "Your learning path" tab
+    router.push('/lessons');
   };
 
   const fetchStudentData = async (): Promise<void> => {
@@ -469,20 +466,26 @@ export default function Dashboard() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Top Bar */}
-        <View style={styles.topBar}>
-          <Text style={styles.logoText}>SEÑAS</Text>
-          <View style={styles.topBarRight}>
-            <View style={styles.streakBadge}>
-              <Svg width="15" height="15" viewBox="0 0 24 24" fill="#fb923c">
-                <Path d="M12 2c0 6-8 8-8 14a8 8 0 0016 0C20 10 12 8 12 2z" />
-              </Svg>
-              <Text style={styles.streakText}>{streak}</Text>
-            </View>
+      {/* Top Bar — FIXED outside ScrollView */}
+      <View style={styles.topBar}>
+        <Text style={styles.logoText}>SEÑAS</Text>
+        <View style={styles.topBarRight}>
+          <View style={styles.streakBadge}>
+            <Svg width="15" height="15" viewBox="0 0 24 24" fill="#fb923c">
+              <Path d="M12 2c0 6-8 8-8 14a8 8 0 0016 0C20 10 12 8 12 2z" />
+            </Svg>
+            <Text style={styles.streakText}>{streak}</Text>
           </View>
         </View>
+      </View>
 
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#1e4b8f" />
+        }
+      >
         {/* Hero + Level Card — same blue gradient & drifting clouds as splash/login/onboarding */}
         <View style={styles.section}>
           <View style={styles.heroCardWrapper}>
@@ -702,7 +705,7 @@ const styles = StyleSheet.create({
   // ── Floating Practice Ad Banner ──
   adBannerWrapper: {
     position: 'absolute',
-    bottom: 10, // sits snugly just above the tab bar
+    bottom: 90, // clears the 68px tab bar + 22px bubble + safe area padding
     left: 12,
     right: 12,
     zIndex: 999,
